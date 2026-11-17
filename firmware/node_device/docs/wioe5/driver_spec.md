@@ -46,17 +46,24 @@ LoRaWAN. Este driver é a única peça do firmware que conversa com o Wio-E5. El
 | Formato             | 9600 baud, 8N1, sem controle de fluxo (default do módulo, §2.1)  |
 | Clock do periférico | PCLK2 (160 MHz)                                                  |
 | FIFO                | desabilitada                                                     |
-| Interrupção         | **ainda não habilitada** — ver pré-requisito P1                  |
-| Reset do módulo     | **não mapeado** — ver questão em aberto Q4                       |
+| Interrupção         | `USART1_IRQn` habilitada (prioridade 0) ✔                        |
+| Reset do módulo     | **não conectado** — ver P2                                       |
 
-**Pré-requisitos no CubeMX** (fazer antes da implementação, em branch própria):
+**Pré-requisitos no CubeMX:**
 
-- **P1** — Habilitar `USART1 global interrupt` no NVIC. A recepção será por interrupção
-  (byte a byte) alimentando um ring buffer. A 9600 baud isso dá ~960 interrupções/s no
-  máximo, carga desprezível. DMA circular + IDLE fica como otimização futura.
-- **P2** — (Opcional, recomendado) Reservar um GPIO push-pull ligado ao pino `RST` do Wio-E5
-  para reset por hardware. Sem ele, a recuperação depende de `AT+RESET`, que não funciona
-  se o módulo travar.
+- **P1** ✔ — `USART1 global interrupt` habilitada. A recepção é por interrupção (byte a
+  byte) alimentando um ring buffer. A 9600 baud isso dá ~960 interrupções/s no máximo,
+  carga desprezível. DMA circular + IDLE fica como otimização futura.
+- **P2** — (**Recomendado**) Ligar o pino `RST` do Wio-E5 a um GPIO livre do STM32,
+  configurado como **saída open-drain, sem pull, nível inicial alto** (liberado). O `RST`
+  do Wio-E5 é o NRST do STM32WLE5, ativo em nível baixo e já com pull-up interno.
+  Motivo: `AT+RESET` só funciona se o interpretador AT do módulo ainda estiver respondendo.
+  Num nó de campo sem acesso físico, o reset por hardware é a única saída se o módulo
+  travar. O driver funciona sem o pino (`set_reset = NULL`); nesse caso a recuperação fica
+  limitada a `AT+RESET` e ao ciclo de alimentação da placa.
+- **P3** — (Recomendado) Habilitar o **pull-up interno em `PA9` (USART1_TX)**, para que a
+  linha RX do módulo fique em nível alto mesmo se a USART for desinicializada. Qualquer
+  borda nessa linha acorda o módulo (§4.30 do PDF). Ver §10.7.
 
 ---
 
@@ -178,6 +185,7 @@ wioe5_status_t wioe5_start_reset(wioe5_t *dev);   /* HW se houver pino, senão A
 
 /* ---- Consulta --------------------------------------------------------- */
 bool                wioe5_is_busy(const wioe5_t *dev);
+bool                wioe5_can_stop(const wioe5_t *dev);   /* seguro entrar em Stop 2? §10.7 */
 wioe5_status_t      wioe5_last_result(const wioe5_t *dev);
 const wioe5_info_t *wioe5_info(const wioe5_t *dev);
 
@@ -500,6 +508,57 @@ em alguns exemplos e `+MSGHEX:` em outros. O manipulador do `kind MSG` aceita os
 - A **política** de quando resetar é da aplicação. Recomendação: resetar quando
   `info.consecutive_timeouts ≥ 3` (o driver emite `WIOE5_EVT_UNRESPONSIVE` nesse ponto).
 
+### 10.7 Integração com o baixo consumo do STM32U585 (Stop 2)
+
+Entre medições o STM32 fica em **Stop 2** e o Wio-E5 em `AT+LOWPOWER`. O Stop 2 mantém a
+RAM e os registradores dos periféricos, então o estado do driver (`joined`, porta atual,
+`setup_done`) sobrevive. `setup` e `join` rodam só no *cold boot*. Isso resolve a Q7 e
+evita o desgaste da EEPROM do módulo.
+
+Ciclo de medição esperado (implementado na aplicação, não no driver):
+
+```
+cold boot ─▶ setup ─▶ join ─▶ ┌──────────────────────────────────────────────┐
+                              │ medir sensor                                 │
+                              │ send (wake automático do Wio-E5)             │
+                              │ sleep do Wio-E5 (AT+LOWPOWER)                │
+                              │ wioe5_can_stop() == true ?                   │
+                              │ RTC wakeup timer ─▶ HAL_PWREx_EnterSTOP2Mode │
+                              │ acorda: SystemClock_Config()                 │
+                              └──────────────────────── loop ────────────────┘
+```
+
+Regras que o driver impõe ou exige:
+
+1. **Nova função** `bool wioe5_can_stop(const wioe5_t *dev)`: retorna `true` só se não há
+   operação em andamento, o ring buffer está vazio e o estado é `SLEEPING` (ou `UNINIT`).
+   A aplicação só entra em Stop 2 quando ela retorna `true`. Motivo: o `HAL_GetTick()`
+   (SysTick) para em Stop 2. Um timeout em andamento ficaria congelado, e um byte chegando
+   do módulo seria perdido, porque a USART1 não recebe em Stop 2.
+2. **Nada chega do módulo enquanto o STM32 está em Stop 2.** Em Classe A e com o módulo em
+   `LOWPOWER`, o Wio-E5 só fala depois de ser acordado pelo host. Por isso não é preciso
+   acordar o MCU pela UART. Downlinks só chegam dentro de um `send`, quando o MCU já está
+   acordado.
+3. **A linha TX do STM32 (RX do módulo) precisa ficar em nível alto durante o Stop 2.**
+   Em Stop 2 o pino `PA9` mantém a função alternada e o nível ocioso alto. A USART **não**
+   deve ser desinicializada antes do Stop. Se um dia for (para economizar), `PA9` deve
+   antes virar saída em nível alto. O pull-up de P3 é a proteção extra contra uma borda
+   espúria, que acordaria o módulo e gastaria energia sem ninguém perceber.
+4. **Ao acordar:** a aplicação chama `SystemClock_Config()` (o clock volta em MSI/HSI). A
+   recepção por interrupção armada antes do Stop continua válida, porque os registradores
+   da USART são mantidos. A porta STM32 oferece `wioe5_port_stm32_resume()`, que re-arma
+   o `HAL_UART_Receive_IT` por segurança e limpa flags de erro (ORE/FE/NE) que possam ter
+   ficado pendentes.
+5. **Durante uma operação** (join ≈ 6–10 s, envio ≈ 2–4 s com janelas RX1/RX2), o MCU fica
+   em **Sleep** (`__WFI` no `idle_hook` do `wioe5_wait()` ou no laço principal). As
+   interrupções da USART e do SysTick continuam ativas. Nessa fase o gasto do MCU depende
+   da frequência do clock. 160 MHz não é necessário para 9600 baud, e reduzir o SYSCLK
+   (ex.: MSI 16 MHz) nos períodos de comunicação baixa bastante o consumo. Fica como
+   decisão da aplicação (Q9).
+6. **Otimização futura (fora desta versão):** usar Stop 1 durante as esperas, com o
+   *wake-up* da USART1 por recepção e um `now_ms()` baseado em LPTIM (que roda em Stop).
+   A interface de porta já permite trocar a fonte de tempo sem mudar o driver.
+
 ---
 
 ## 11. Temporização
@@ -593,18 +652,19 @@ firmware/node_device/
 
 ---
 
-## 15. Questões em aberto (precisam de resposta antes/durante a implementação)
+## 15. Questões
 
-| #  | Questão                                                                                       | Proposta padrão                                           |
-|----|-----------------------------------------------------------------------------------------------|-----------------------------------------------------------|
-| Q1 | Região e sub-banda. O nó está no Brasil (Rio dos Sinos/RS)?                                   | `AU915`, sub-banda 2 (canais 8–15 + 65), usada pelo TTN/ChirpStack no Brasil |
-| Q2 | Network server (TTN, ChirpStack próprio, Everynet…)?                                          | define sub-banda e se `LW=NET` (rede pública) muda        |
-| Q3 | Chaves: gravadas uma vez no módulo via terminal, ou pelo firmware no *cold boot*?             | gravar uma vez via terminal; `provision = NULL`           |
-| Q4 | Há trilha do pino `RST` do Wio-E5 para um GPIO do STM32?                                     | recomendado; senão só `AT+RESET`                          |
-| Q5 | Uplinks confirmados ou não?                                                                   | não confirmados (economia de energia e duty cycle)        |
-| Q6 | `AT+LOG` é persistente?                                                                       | enviar sempre no setup (opcional, barato)                 |
-| Q7 | O STM32 vai usar Stop 2 (RAM mantida) ou Standby (reinicia) entre medições?                   | Stop 2: estado do driver sobrevive, `setup` só no cold boot |
-| Q8 | Tamanho do payload da aplicação                                                               | ≤ 11 bytes (cabe em qualquer DR do AU915, mesmo com dwell time) |
+| #  | Questão                                                       | Situação                                                                                       |
+|----|---------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| Q1 | Região e sub-banda                                            | **Decidido:** Rio dos Sinos/RS → `AU915`, sub-banda 2 (canais 8–15 + 65), a mesma do TTN no Brasil |
+| Q2 | Network server                                                | **Decidido para testes:** The Things Network (§16). Servidor definitivo fica para depois; só muda a configuração, não o driver |
+| Q3 | Chaves: gravadas uma vez via terminal ou pelo firmware?       | Padrão mantido: gravar uma vez via terminal (§16.3); `provision = NULL`                         |
+| Q4 | Pino `RST` ligado a um GPIO?                                  | **Hoje não.** Recomendado ligar (P2). Driver suporta os dois casos                              |
+| Q5 | Uplinks confirmados ou não?                                   | Padrão mantido: não confirmados (energia e limite de downlinks do TTN, §16.4)                   |
+| Q6 | `AT+LOG` é persistente?                                       | Verificar em bancada (§15.1); enviar sempre no setup                                           |
+| Q7 | Stop 2 ou Standby entre medições?                             | **Decidido:** Stop 2 (§10.7)                                                                   |
+| Q8 | Tamanho do payload da aplicação                               | Padrão mantido: ≤ 11 bytes                                                                     |
+| Q9 | Frequência do SYSCLK durante a comunicação                    | **Aberto (aplicação):** reduzir de 160 MHz durante as esperas do driver (§10.7 item 5)          |
 
 ### 15.1 Comportamentos a confirmar em bancada
 
@@ -619,4 +679,67 @@ adaptador USB-UART + terminal (9600 8N1) as respostas reais e salvar como *fixtu
 5. Sequência de wake: bytes exatos recebidos após enviar `0xFF` com o módulo em `LOWPOWER`.
 6. O que o módulo imprime no boot e quanto tempo leva até aceitar `AT`.
 7. Se o estado de join sobrevive a `AT+RESET` / power cycle.
-8. Versão do firmware AT do módulo usado (`AT+VER`).
+8. Versão do firmware AT do módulo usado (`AT+VER`) e versão LoRaWAN ativa (`AT+LW=VER`),
+   que precisa bater com o cadastro no TTN (§16.3).
+
+---
+
+## 16. Ambiente de teste com The Things Network
+
+### 16.1 Avaliação: é viável?
+
+**Sim.** O foco é a comunicação MCU ↔ Wio-E5, e o TTN só entra no último nível de teste:
+
+| O que se quer validar                                         | Precisa de rede? |
+|---------------------------------------------------------------|------------------|
+| Parser, motor de comandos, operações (testes N1–N3)           | Não (PC)         |
+| `setup`, `sleep`/`wake`, `reset`, caminho de falha do `join`  | Não (bancada, só a placa) |
+| `join` com sucesso, uplink, downlink, ADR (testes N4)         | **Sim**          |
+
+Para a última linha o TTN atende bem:
+
+- **Região:** o TTN usa no Brasil o plano *AU915-928 FSB 2* (canais 8–15 + canal 65,
+  916,8–918,2 MHz + 917,5 MHz). É o mesmo padrão do driver (Q1).
+- **Gateway:** precisa de **um gateway AU915 ao alcance do nó, conectado ao TTN**. Pode ser
+  o "outro gateway" que você mencionou: qualquer gateway LoRaWAN AU915 (Semtech UDP
+  packet forwarder ou LoRa Basics Station) pode ser registrado no TTN. Ele precisa estar
+  configurado na **sub-banda 2**. Um gateway em outra sub-banda não escuta o nó, e o
+  sintoma é só `Join failed`.
+- **Cobertura comunitária:** pode haver gateways TTN públicos na região. Para bancada,
+  um gateway próprio na mesma sala é o mais confiável.
+- **Módulo:** o Wio-E5 está no *LoRaWAN Device Repository* do TTN (fabricante Seeed
+  Studio), então o cadastro preenche versão MAC e parâmetros regionais.
+- **Custo:** gratuito, com limites de uso justo (§16.4) suficientes para testes.
+
+### 16.2 Riscos
+
+| Risco                                                          | Mitigação                                                             |
+|----------------------------------------------------------------|-----------------------------------------------------------------------|
+| Gateway em sub-banda diferente do nó                           | Conferir no console do TTN que o gateway está em `AU_915_928_FSB_2`   |
+| Gateway e aplicação em *clusters* TTN diferentes               | Registrar os dois no mesmo cluster (ex.: `nam1` ou `au1`)             |
+| Versão LoRaWAN do módulo ≠ cadastro no TTN                     | Conferir `AT+LW=VER` (§15.1 item 8) com o cadastro                    |
+| Nó muito perto do gateway (saturação do receptor)              | Manter alguns metros e uma parede entre eles, ou reduzir `AT+POWER`   |
+| Limite de *fair use* em testes de longa duração                | Com 11 bytes: intervalo ≥ 18 min em SF10, ≥ 3 min em SF7 (§16.4)      |
+
+### 16.3 Passo a passo (feito uma vez, fora do firmware)
+
+1. Criar conta no TTN e uma *application* no cluster escolhido.
+2. Registrar o gateway nesse cluster com o plano *Australia 915–928 MHz, FSB 2*.
+3. Ler o DevEUI do módulo por terminal serial (9600 8N1): `AT+ID=DevEui`.
+4. Registrar o *end device* pelo Device Repository (Seeed Studio → Wio-E5, plano FSB 2),
+   usando o DevEUI lido, um JoinEUI (pode ser `0000000000000000`) e deixando o TTN gerar
+   a AppKey.
+5. Gravar no módulo, pelo terminal, uma única vez:
+   `AT+ID=AppEui,"<JoinEUI>"` e `AT+KEY=APPKEY,"<AppKey>"`.
+   A AppKey não vai para o repositório (Q3, §13).
+6. Na bancada: `AT+MODE=LWOTAA`, `AT+DR=AU915`, `AT+CH=NUM,8-15,65`, `AT+JOIN`. Ver o
+   join no *Live data* do TTN. Essa sessão manual também gera as fixtures da §15.1.
+
+### 16.4 Limites do TTN que afetam os testes
+
+- **Uplink:** até 30 s de tempo no ar por dispositivo por dia. Um uplink de 11 bytes leva
+  ~0,4 s em SF10/125 kHz e ~0,06 s em SF7. Isso dá algo como 70 a 500 uplinks por dia,
+  dependendo do DR.
+- **Downlink:** até 10 por dispositivo por dia, contando os ACKs de uplinks confirmados.
+  Por isso o padrão é uplink **não confirmado** (Q5). O teste HIL-04 (downlink) usa um
+  downlink agendado manualmente no console.

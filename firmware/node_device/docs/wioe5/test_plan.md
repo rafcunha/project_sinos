@@ -244,6 +244,10 @@ Convenção: **TC-<área>-<nn>**. "Esperado" descreve o que o teste verifica.
 | TC-PW-07  | Reset com pino: pulso ≥ `T_RESET_PULSE`, espera `T_BOOT`, `AT`      | sequência e tempos de `set_reset` corretos; `UNINIT`; `joined = false` |
 | TC-PW-08  | Reset sem pino                                                     | TX `AT+RESET`; espera `T_BOOT`; `AT`                 |
 | TC-PW-09  | Linhas de boot com lixo após reset                                 | ignoradas                                            |
+| TC-PW-10  | `wioe5_can_stop()` em cada estado                                  | `true` só em `SLEEPING`/`UNINIT` sem operação e com ring buffer vazio |
+| TC-PW-11  | `can_stop()` com byte pendente no ring buffer                      | `false`                                              |
+| TC-PW-12  | Relógio salta (simula Stop 2) com driver em `SLEEPING`, depois `send` | wake + envio normais; nenhum timeout falso         |
+| TC-PW-13  | `send` com driver em `SLEEPING`                                    | ordem do TX: byte de wake, `AT`, `AT+LW=LEN`, `AT+MSGHEX` |
 
 ### 2.10 N3 — Replay (`test_replay.c`)
 
@@ -263,7 +267,9 @@ Um caso por arquivo em `tests/fixtures/`. Mínimo exigido, capturado em bancada:
 
 ## 3. N4 — Hardware-in-the-loop (manual, checklist de release)
 
-Montagem: placa do nó + Wio-E5 + gateway na mesma rede + console do network server.
+Montagem: placa do nó + Wio-E5 + gateway AU915 (sub-banda 2) registrado no The Things
+Network + console do TTN (*Live data*), conforme §16 da spec. HIL-01, HIL-06 e HIL-07
+não precisam de gateway.
 
 | ID        | Procedimento                                                            | Critério de aceite                                      |
 |-----------|-------------------------------------------------------------------------|---------------------------------------------------------|
@@ -274,7 +280,9 @@ Montagem: placa do nó + Wio-E5 + gateway na mesma rede + console do network ser
 | HIL-05    | `sleep` / espera 10 min / `wake` / `send`                               | envio OK sem re-join; corrente do módulo em sleep medida e registrada |
 | HIL-06    | Gateway desligado → `join`                                              | `JOIN_FAILED` ou `TIMEOUT` no prazo; sem travar o MCU    |
 | HIL-07    | Desconectar TX do módulo durante operação                               | `TIMEOUT`; após 3, evento `UNRESPONSIVE`; reset recupera |
-| HIL-08    | Teste de longa duração: 24 h com 1 uplink a cada 15 min                 | 0 travamentos; perda < 5 %; contadores de overflow = 0   |
+| HIL-08    | Teste de longa duração: 24 h com 1 uplink a cada 20 min (dentro do *fair use* do TTN) | 0 travamentos; perda < 5 %; contadores de overflow = 0 |
+| HIL-09    | Ciclo completo com STM32 em Stop 2 entre medições (RTC wakeup)          | uplinks continuam sem re-join; corrente média do conjunto medida e registrada |
+| HIL-10    | Com o nó em Stop 2, osciloscópio em `PA9`                               | linha estável em nível alto; nenhum `+LOWPOWER: WAKEUP` espúrio |
 
 ---
 
