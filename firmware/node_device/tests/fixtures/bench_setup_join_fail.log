@@ -1,0 +1,52 @@
+# Bench capture, 2026-11-17
+# Hardware: STM32U585 node + Seeed Wio-E5 (AT firmware 4.0.11), USART1 9600 8N1,
+#           RST on PA0. No gateway in range, no AppKey provisioned -> join fails.
+# Source:   wioe5_trace buffer (Debug build), read with arm-none-eabi-gdb.
+# Format:   "> " host to module, "< " module to host, "= " expected driver status,
+#           "# " comment. Times are not recorded by the trace.
+#
+# Driver state after the run: setup OK, info.fw_version "4.0.11",
+# dev_eui 2C:F7:F1:20:81:50:5D:50, uart_errors 0, rx/line overflows 0,
+# unknown_lines 0, consecutive_timeouts 0. Second AT+JOIN at t = 24.8 s
+# (setup ~2.5 s incl. hardware reset + join ~7 s + 15 s backoff).
+
+# ---- setup (after hardware reset on PA0) ----
+> AT
+< +AT: OK
+> AT+LOG=QUIET
+< +LOG: QUIET
+> AT+VER
+< +VER: 4.0.11
+> AT+ID=DevEui
+< +ID: DevEui, 2C:F7:F1:20:81:50:5D:50
+> AT+MODE=LWOTAA
+< +MODE: LWOTAA
+> AT+DR=AU915
+< +DR: AU915
+> AT+CH=NUM,8-15,65
+< +CH: NUM, 8-15, 65
+> AT+ADR=ON
+< +ADR: ON
+> AT+PORT=1
+< +PORT: 1
+> AT+RETRY=3
+< +RETRY: 3
+> AT+REPT=1
+< +REPT: 1
+= OK
+
+# ---- join without network ----
+> AT+JOIN
+< +JOIN: Start
+< +JOIN: NORMAL
+< +JOIN: Join failed
+< +JOIN: Done
+= ERR_JOIN_FAILED
+
+# ---- retry after 15 s backoff ----
+> AT+JOIN
+< +JOIN: Start
+< +JOIN: NORMAL
+< +JOIN: Join failed
+< +JOIN: Done
+= ERR_JOIN_FAILED

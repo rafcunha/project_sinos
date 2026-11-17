@@ -129,6 +129,20 @@ e um gcc do host para os testes (no Windows: `winget install --id BrechtSanders.
 Bibliotecas de terceiros usadas nos testes ficam vendorizadas e sem modificação em
 `tests/vendor/` (hoje: Unity v2.6.0).
 
+### 4.1 Debug na placa
+
+- **VS Code (extensão STM32Cube):** abrir a pasta `firmware/node_device/node`, preset CMake
+  `Debug`, e usar a configuração **"Node: Debug (ST-LINK)"** de `.vscode/launch.json`.
+- **Linha de comando** (o mesmo servidor que a extensão usa; ferramentas em
+  `%LOCALAPPDATA%\stm32cube\bundles`):
+  `ST-LINK_gdbserver -e -p 61234 -d -s -k -m 0 -cp <bundles>\programmer\<versão>\bin`
+  e `arm-none-eabi-gdb build/Debug/node.elf` com `target extended-remote :61234`.
+  O STM32U585 responde no **access port 0** (`-m 0`). Encerre o servidor antes de depurar
+  pelo VS Code: a sonda só aceita um cliente.
+- **Trace da UART:** builds Debug guardam o tráfego com o Wio-E5 em `wioe5_trace`
+  (4 KB circular). Para ler: `set print elements 0` e `print wioe5_trace.buf`. As capturas
+  de bancada viram fixtures em `tests/fixtures/`.
+
 Se uma ferramenta não estiver instalada, **diga isso ao usuário** — não marque o checklist
 como cumprido sem ter rodado.
 
