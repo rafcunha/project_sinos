@@ -6,7 +6,7 @@
 | Host         | STM32U585 (bare-metal, STM32 HAL, sem RTOS)                            |
 | Módulo       | Seeed Wio-E5 (STM32WLE5JC) com firmware AT de fábrica (ref. v4.0.x)    |
 | Referência   | *LoRa-E5 AT Command Specification V1.0* (Seeed, 2020-07-20)            |
-| Status       | **Rascunho para revisão** — nenhuma linha de código escrita ainda      |
+| Status       | **Implementado** (`node/Lib/wioe5`); testes do host passando; validação em bancada pendente (§15.1) |
 
 ---
 
@@ -661,8 +661,40 @@ firmware/node_device/
 └── tests/                      ← testes no host (ver test_plan.md)
 ```
 
-- `node/CMakeLists.txt`: adicionar `Lib/wioe5/src/*.c` e `port/wioe5_port_stm32.c` em
-  `target_sources`, e `Lib/wioe5/inc` em `target_include_directories`.
+- `node/CMakeLists.txt` já compila `Lib/wioe5/src/*.c` e `Lib/wioe5/port/wioe5_port_stm32.c`,
+  com `Lib/wioe5/inc` e `Lib/wioe5/port` nos includes.
+- Tamanho medido (arm-none-eabi-gcc 14.3, `-Os`): **~8,7 KB de flash** para driver + porta;
+  RAM = `sizeof(wioe5_t)` (~2,3 KB com os tamanhos padrão), sem `.data`/`.bss` próprios.
+
+### 14.1 Integração da porta STM32
+
+A porta (`port/wioe5_port_stm32.h`) não define os callbacks globais da HAL, porque a
+aplicação pode ter outras UARTs. A aplicação encaminha para ela:
+
+```c
+static wioe5_t       wio;
+static wioe5_stm32_t wio_hw = { .huart    = &huart1,
+                                .rst_port = reset_wioe5_GPIO_Port,
+                                .rst_pin  = reset_wioe5_Pin };
+
+wioe5_port_t   port = wioe5_port_stm32(&wio_hw, &wio);
+wioe5_config_t cfg;
+wioe5_config_default(&cfg);          /* + callbacks */
+wioe5_init(&wio, &port, &cfg);
+wioe5_port_stm32_start(&wio_hw);     /* arma a RX por interrupção */
+wioe5_start_setup(&wio);
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *h) { wioe5_port_stm32_rx_cplt(&wio_hw, h); }
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *h)  { wioe5_port_stm32_error(&wio_hw, h); }
+/* ao sair do Stop 2, depois de SystemClock_Config(): */
+wioe5_port_stm32_resume(&wio_hw);
+```
+
+- **TX bloqueante** (`HAL_UART_Transmit`): o comando mais longo (~500 bytes) leva ~520 ms
+  a 9600 baud. A RX continua por interrupção nesse tempo.
+- `rst_port = NULL` desliga o reset por hardware (`set_reset = NULL`).
+- A porta não gera log (`log = NULL`). Para depurar, a aplicação pode trocar por uma função
+  própria antes do `wioe5_init`.
 - `tests/CMakeLists.txt` compila `Lib/wioe5/src/*.c` (sem a porta STM32) com o gcc do host.
 - Código gerado pelo CubeMX só é alterado dentro de `/* USER CODE BEGIN … END */`.
 

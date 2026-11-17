@@ -297,7 +297,7 @@ não precisam de gateway.
 | Arquivo            | Testes  | Cobre                                                           |
 |--------------------|---------|-----------------------------------------------------------------|
 | `test_ringbuf.c`   | 8       | TC-RB-00..07                                                    |
-| `test_line.c`      | 13      | TC-LN-01..13                                                    |
+| `test_line.c`      | 14      | TC-LN-01..13, TC-LN-10b                                         |
 | `test_parse.c`     | 27      | TC-PR-01..28                                                    |
 | `test_hex.c`       | 7       | TC-HX-01..06                                                    |
 | `test_engine.c`    | 19      | TC-CF-01..04, TC-EN-01..15 (TC-EN-10 está em `test_op_send.c`)  |
@@ -305,14 +305,18 @@ não precisam de gateway.
 | `test_op_join.c`   | 14      | TC-JN-01..13                                                    |
 | `test_op_send.c`   | 23      | TC-TX-01..20                                                    |
 | `test_op_power.c`  | 19      | TC-PW-01..16                                                    |
-| **Total**          | **148** |                                                                 |
+| **Total**          | **149** |                                                                 |
 
 Os IDs com sufixo (`b`, `c`) e os números além das tabelas acima são casos acrescentados
 durante a escrita. Cada função de teste tem o ID no comentário acima dela.
 
-Os testes foram escritos **antes** do driver. Com os stubs atuais, tudo compila sem
-warnings e 144 dos 148 testes falham. Os 4 que passam são testes de rejeição de entrada;
-passam por acaso, porque o stub sempre retorna `false`.
+Histórico:
+1. Os testes foram escritos **antes** do driver. Contra os stubs, 144 de 148 falhavam.
+2. Com o driver implementado, **todos passam**.
+3. **Teste de mutação:** 24 defeitos foram injetados no driver, um de cada vez (timeout com
+   erro de 1, sem tempo de guarda, sem `NO_ACK`, AppKey no log, etc.). 22 foram pegos de
+   primeira. Os 2 que passaram (limite de linha com erro de 1 e evento `UNRESPONSIVE`
+   repetido) motivaram o TC-LN-10b e a extensão do TC-EN-04. Agora os 24 são detectados.
 
 Comandos (em `firmware/node_device/tests`):
 
