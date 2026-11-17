@@ -1,0 +1,45 @@
+# Build output (CMake presets write to build/<preset>)
+build/
+**/build/
+cmake-build-*/
+Debug/
+Release/
+*.o
+*.d
+*.su
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+compile_commands.json
+
+# Test coverage
+*.gcda
+*.gcno
+*.gcov
+coverage/
+
+# IDE / editor
+.vscode/
+!.vscode/extensions.json
+.idea/
+.settings/
+*.launch
+.metadata/
+
+# Python
+__pycache__/
+*.pyc
+
+# Secrets (keep only *.example.h in the repo)
+**/lorawan_secrets.h
+*.secrets
+.env
+
+# Local agent settings
+.claude/settings.local.json
+
+# OS
+Thumbs.db
+.DS_Store
