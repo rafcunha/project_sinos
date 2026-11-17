@@ -55,11 +55,21 @@ LoRaWAN. Este driver é a única peça do firmware que conversa com o Wio-E5. El
   byte) alimentando um ring buffer. A 9600 baud isso dá ~960 interrupções/s no máximo,
   carga desprezível. DMA circular + IDLE fica como otimização futura.
 - **P2** — `RST` do Wio-E5 ligado em **`PA0`** (label `reset_wioe5`). Configuração exigida:
-  **saída open-drain, sem pull, nível inicial alto** (liberado). O `RST` do Wio-E5 é o
-  NRST do STM32WLE5, ativo em nível baixo e já com pull-up interno. O NRST também é
-  puxado para baixo pelo próprio módulo (watchdog, brown-out). Com push-pull em nível alto
-  haveria disputa elétrica nesse momento. Por isso tem de ser open-drain. A porta STM32
-  implementa `set_reset(true)` escrevendo nível baixo e `set_reset(false)` liberando.
+  **saída open-drain, sem pull, nível inicial baixo** (módulo segurado em reset).
+  - O `RST` do Wio-E5 é o NRST do STM32WLE5: ativo em nível baixo, com pull-up interno,
+    e também puxado para baixo pelo próprio módulo (watchdog, brown-out). Com push-pull em
+    nível alto haveria disputa elétrica nesse momento. Por isso tem de ser **open-drain**.
+  - **Nível inicial baixo:** o MCU segura o módulo em reset desde o `MX_GPIO_Init()` até
+    o driver liberá-lo no `setup` (§10.1, passo 0). Assim o módulo sempre parte de um
+    estado conhecido, com o MCU já pronto para receber. Isso vale também quando só o MCU
+    reiniciou (watchdog, falha), mesmo que o módulo estivesse no meio de um join, de um
+    envio ou em `LOWPOWER`.
+  - Antes do `MX_GPIO_Init()` (reset e início do boot do MCU), o PA0 fica em alta
+    impedância e o pull-up do módulo o libera. O módulo começa a bootar e é resetado de
+    novo logo em seguida. É inofensivo, porque o passo 0 do `setup` refaz o reset de forma
+    controlada.
+  - A porta STM32 implementa `set_reset(true)` escrevendo nível baixo e
+    `set_reset(false)` escrevendo nível alto (em open-drain, isso só libera o pino).
   Motivo: `AT+RESET` só funciona se o interpretador AT do módulo ainda estiver respondendo.
   Num nó de campo sem acesso físico, o reset por hardware é a única saída se o módulo
   travar. O driver funciona sem o pino (`set_reset = NULL`); nesse caso a recuperação fica
@@ -426,6 +436,7 @@ em alguns exemplos e `+MSGHEX:` em outros. O manipulador do `kind MSG` aceita os
 
 | # | Comando                       | Opcional | Persistente (EEPROM) | Notas                                               |
 |---|-------------------------------|----------|----------------------|-----------------------------------------------------|
+| 0 | reset por hardware            | —        | —                    | só se `set_reset` ≠ NULL: garante reset por ≥ `T_RESET_PULSE`, libera, espera `T_BOOT`; bytes de boot são descartados |
 | 1 | `AT` (até 3 tentativas)       | não      | —                    | probe; 1ª tentativa pode falhar com lixo de boot   |
 | 2 | `AT+LOG=QUIET`                | sim      | ? (Q6)               | reduz tráfego e consumo                              |
 | 3 | `AT+VER`                      | não      | —                    | guarda versão                                       |

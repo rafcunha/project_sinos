@@ -191,6 +191,9 @@ Convenção: **TC-<área>-<nn>**. "Esperado" descreve o que o teste verifica.
 | TC-SU-08  | `provision` preenchido                                             | envia `AppEui` e `APPKEY`; AppKey **não** aparece no log |
 | TC-SU-09  | Eco diferente do pedido (`+MODE: LWABP`)                           | `UNEXPECTED`                                          |
 | TC-SU-10  | `send`/`join` antes do setup                                       | `STATE`                                               |
+| TC-SU-11  | Setup com pino de reset (módulo já em reset pelo boot)             | 1ª ação: `set_reset(true)` mantido ≥ `T_RESET_PULSE`, depois `set_reset(false)`; nenhum byte TX antes de `T_BOOT`; depois `AT` |
+| TC-SU-12  | Setup com pino de reset e lixo de boot recebido durante `T_BOOT`   | lixo descartado; probe `AT` OK                        |
+| TC-SU-13  | Setup sem pino (`set_reset = NULL`)                                | começa direto pelo probe `AT`                         |
 
 ### 2.7 L4 — Join (`test_op_join.c`)
 
