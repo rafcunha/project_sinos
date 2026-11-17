@@ -52,6 +52,9 @@ typedef struct {
     uint32_t          last_reply_time;
     bool              failed;
     char              fail_msg[512];
+    /** Optional replacement for wioe5_process() in each tick (e.g. an app pump). */
+    void            (*process)(void *ctx);
+    void             *process_ctx;
 } modem_sim_t;
 
 void sim_init(modem_sim_t *sim, fake_port_t *fp, wioe5_t *dev);
