@@ -156,6 +156,21 @@ static void test_unresponsive_event_once(void)
     TEST_ASSERT_EQUAL_INT(WIOE5_ERR_TIMEOUT, wioe5_last_result(&r.dev));
     TEST_ASSERT_EQUAL_UINT32(3u, wioe5_info(&r.dev)->consecutive_timeouts);
     TEST_ASSERT_EQUAL_INT(1, cb_event_count(WIOE5_EVT_UNRESPONSIVE));
+
+    /* More timeouts without any answer do not repeat the event. */
+    rig_new_script(&r);
+    TEST_ASSERT_EQUAL_INT(WIOE5_OK, wioe5_start_setup(&r.dev));
+    rig_run(&r, silent, SIM_COUNT(silent), 10000u);
+    TEST_ASSERT_TRUE_MESSAGE(sim_done(&r.sim), sim_status(&r.sim));
+    TEST_ASSERT_EQUAL_UINT32(6u, wioe5_info(&r.dev)->consecutive_timeouts);
+    TEST_ASSERT_EQUAL_INT(1, cb_event_count(WIOE5_EVT_UNRESPONSIVE));
+
+    /* After an answer, a new streak reports again. */
+    TEST_ASSERT_TRUE_MESSAGE(rig_setup(&r), sim_status(&r.sim));
+    rig_new_script(&r);
+    TEST_ASSERT_EQUAL_INT(WIOE5_OK, wioe5_start_setup(&r.dev));
+    rig_run(&r, silent, SIM_COUNT(silent), 10000u);
+    TEST_ASSERT_EQUAL_INT(2, cb_event_count(WIOE5_EVT_UNRESPONSIVE));
 }
 
 /* TC-EN-05: any answer resets the timeout counter. */

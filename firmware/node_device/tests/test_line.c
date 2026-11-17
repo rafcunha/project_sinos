@@ -143,6 +143,19 @@ static void test_overlong_line_dropped_next_line_intact(void)
     TEST_ASSERT_EQUAL_STRING("+AT: OK", lines[0]);
 }
 
+/* TC-LN-10b: exactly MAXLEN + 1 characters overflows (boundary). */
+static void test_line_one_over_max_overflows(void)
+{
+    char buf[MAXLEN + 3u];
+    memset(buf, 'C', sizeof(buf));
+    buf[0]              = '+';
+    buf[MAXLEN + 1u]    = '\r';
+    buf[MAXLEN + 2u]    = '\n';
+    feed(buf, MAXLEN + 3u);
+    TEST_ASSERT_EQUAL_INT(1, n_overflows);
+    TEST_ASSERT_EQUAL_INT(0, n_lines);
+}
+
 /* TC-LN-11: NUL bytes are dropped wherever they appear. */
 static void test_nul_bytes_dropped(void)
 {
@@ -183,6 +196,7 @@ int main(void)
     RUN_TEST(test_line_without_plus_is_unknown);
     RUN_TEST(test_line_of_max_length_accepted);
     RUN_TEST(test_overlong_line_dropped_next_line_intact);
+    RUN_TEST(test_line_one_over_max_overflows);
     RUN_TEST(test_nul_bytes_dropped);
     RUN_TEST(test_cr_inside_line_dropped);
     RUN_TEST(test_reset_drops_partial_line);
