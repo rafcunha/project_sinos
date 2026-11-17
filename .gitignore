@@ -21,9 +21,12 @@ compile_commands.json
 coverage/
 
 # IDE / editor
-.vscode/*
-!.vscode/extensions.json
-!.vscode/launch.json
+# VS Code: keep the shared project files (no machine-specific paths), ignore the rest
+**/.vscode/*
+!**/.vscode/extensions.json
+!**/.vscode/launch.json
+!**/.vscode/settings.json
+!**/.vscode/c_cpp_properties.json
 .idea/
 .settings/
 *.launch
