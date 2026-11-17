@@ -3,10 +3,12 @@
  * @brief STM32 glue for the node: driver instance, HAL callbacks, payload and
  *        idle policy.
  *
- * Low power: there is no RTC/LPTIM in the CubeMX project yet, so between
- * uplinks the MCU only enters Sleep mode (__WFI, woken by SysTick every 1 ms).
- * Moving to Stop 2 (driver spec 10.7) needs an RTC wakeup timer; the hook is
- * idle_mcu() below, gated by wioe5_can_stop().
+ * Low power (driver spec 10.7 and 18): when the cycle only waits, the Wio-E5
+ * sleeps (wioe5_can_stop()) and the wait is at least STOP2_MIN_IDLE_MS, the MCU
+ * enters Stop 2 and the RTC wakeup timer (1 s resolution, LSE) brings it back.
+ * Shorter waits, or waits with the module awake, use Sleep mode (__WFI).
+ * HAL_GetTick() stops in Stop 2, so the slept time, measured on the RTC, is
+ * added to the HAL tick on wake-up; the cycle timing stays correct.
  */
 #include "app_node.h"
 
@@ -16,6 +18,14 @@
 #include "main.h"
 #include "wioe5.h"
 #include "wioe5_port_stm32.h"
+
+/** Below this wait, Stop 2 entry/exit overhead is not worth it. */
+#define STOP2_MIN_IDLE_MS 1500u
+/** RTC wakeup counter is 16 bits at 1 Hz (ck_spre): up to 65536 s. */
+#define STOP2_MAX_S 65536u
+
+extern RTC_HandleTypeDef hrtc;
+void                     SystemClock_Config(void);
 
 /* ---- Instances ----------------------------------------------------------- */
 
@@ -74,12 +84,57 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 
 /* ---- Idle ------------------------------------------------------------------ */
 
+/** Milliseconds since midnight from the RTC calendar (sub-second resolution). */
+static uint32_t rtc_ms_of_day(void)
+{
+    RTC_TimeTypeDef t;
+    RTC_DateTypeDef d;
+    if (HAL_RTC_GetTime(&hrtc, &t, RTC_FORMAT_BIN) != HAL_OK) {
+        return 0u;
+    }
+    (void)HAL_RTC_GetDate(&hrtc, &d, RTC_FORMAT_BIN); /* unlocks the shadow registers */
+    uint32_t sub_ms = ((t.SecondFraction - t.SubSeconds) * 1000u) / (t.SecondFraction + 1u);
+    return (((uint32_t)t.Hours * 60u + t.Minutes) * 60u + t.Seconds) * 1000u + sub_ms;
+}
+
+static void enter_stop2(uint32_t seconds)
+{
+    uint32_t t0 = rtc_ms_of_day();
+    if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, seconds - 1u, RTC_WAKEUPCLOCK_CK_SPRE_16BITS, 0u) !=
+        HAL_OK) {
+        __WFI();
+        return;
+    }
+
+    HAL_SuspendTick();
+    HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI);
+
+    /* Woken up (RTC wakeup is the only enabled Stop 2 wakeup source). */
+    SystemClock_Config(); /* back from MSI to the configured clock tree */
+    (void)HAL_RTCEx_DeactivateWakeUpTimer(&hrtc);
+
+    uint32_t t1    = rtc_ms_of_day();
+    uint32_t slept = (t1 >= t0) ? (t1 - t0) : (t1 + 86400000u - t0);
+    __disable_irq();
+    uwTick += slept; /* keep HAL_GetTick() consistent with real time */
+    __enable_irq();
+    HAL_ResumeTick();
+
+    wioe5_port_stm32_resume(&s_wio_hw);
+}
+
 static void idle_mcu(void)
 {
-    /* TODO(stop2): when an RTC wakeup timer exists and wioe5_can_stop(&s_wio)
-     * is true, program the wakeup for the remaining wait, enter Stop 2, then
-     * SystemClock_Config() and wioe5_port_stm32_resume(&s_wio_hw). */
-    __WFI();
+    uint32_t idle = app_lorawan_idle_ms(&s_app);
+    if (wioe5_can_stop(&s_wio) && (idle >= STOP2_MIN_IDLE_MS)) {
+        uint32_t seconds = idle / 1000u; /* round down: the remainder runs in Sleep */
+        if (seconds > STOP2_MAX_S) {
+            seconds = STOP2_MAX_S;
+        }
+        enter_stop2(seconds);
+    } else {
+        __WFI();
+    }
 }
 
 /* ---- Public ---------------------------------------------------------------- */
@@ -88,6 +143,11 @@ void app_node_init(UART_HandleTypeDef *huart)
 {
     wioe5_config_t    cfg;
     app_lorawan_cfg_t app_cfg;
+
+#ifdef DEBUG
+    /* Keep the debugger attached across Stop 2 (costs current: Debug builds only). */
+    HAL_DBGMCU_EnableDBGStopMode();
+#endif
 
     memset(&s_wio_hw, 0, sizeof(s_wio_hw));
     s_wio_hw.huart    = huart;

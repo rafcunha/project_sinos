@@ -184,6 +184,48 @@ static void test_unresponsive_triggers_reset(void)
     TEST_ASSERT_TRUE(gap >= 10000u);
 }
 
+/* APP-07: idle time drives a Stop 2 style clock jump; the cycle resumes on time. */
+static void test_idle_ms_and_clock_jump(void)
+{
+    sim_add(&r.sim, SCRIPT_SETUP, SCRIPT_SETUP_N);
+    sim_add(&r.sim, SCRIPT_JOIN_OK, SCRIPT_JOIN_OK_N);
+    sim_add(&r.sim, SEND_CYCLE, SIM_COUNT(SEND_CYCLE));
+    size_t first_len = r.sim.n_steps - 3u;
+    sim_add(&r.sim, SCRIPT_WAKE_OK, SCRIPT_WAKE_OK_N);
+    sim_add(&r.sim, SEND_CYCLE, SIM_COUNT(SEND_CYCLE));
+
+    TEST_ASSERT_EQUAL_UINT32(0u, app_lorawan_idle_ms(&app)); /* busy at start */
+    run_for(20000u);
+    TEST_ASSERT_TRUE(app_lorawan_can_idle(&app));
+    TEST_ASSERT_TRUE(wioe5_can_stop(&r.dev));
+
+    uint32_t idle     = app_lorawan_idle_ms(&app);
+    uint32_t expected = PERIOD_MS - (r.fp.now - r.sim.match_time[first_len]);
+    TEST_ASSERT_UINT32_WITHIN(20u, expected, idle);
+
+    /* "Stop 2": no ticks run, the clock jumps by the idle time. */
+    r.fp.now += idle;
+    TEST_ASSERT_EQUAL_UINT32(0u, app_lorawan_idle_ms(&app));
+    run_for(10000u);
+    TEST_ASSERT_TRUE_MESSAGE(sim_done(&r.sim), sim_status(&r.sim));
+    TEST_ASSERT_EQUAL_UINT32(2u, app_lorawan_stats(&app)->uplinks_ok);
+}
+
+/* APP-08: idle time during a backoff wait. */
+static void test_idle_ms_during_backoff(void)
+{
+    static const sim_step_t join_fail[] = {
+        {"AT+JOIN\r\n", {{10, "+JOIN: Join failed", false}, {5, "+JOIN: Done", false}}},
+    };
+    sim_add(&r.sim, SCRIPT_SETUP, SCRIPT_SETUP_N);
+    sim_add(&r.sim, join_fail, 1);
+    run_for(5000u);
+    TEST_ASSERT_TRUE(app_lorawan_can_idle(&app));
+    uint32_t idle = app_lorawan_idle_ms(&app);
+    TEST_ASSERT_TRUE(idle > 9000u && idle <= 15000u);
+    TEST_ASSERT_FALSE(wioe5_can_stop(&r.dev)); /* module awake: driver vetoes Stop 2 */
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -193,5 +235,7 @@ int main(void)
     RUN_TEST(test_join_backoff_doubles);
     RUN_TEST(test_rejoin_when_not_joined);
     RUN_TEST(test_unresponsive_triggers_reset);
+    RUN_TEST(test_idle_ms_and_clock_jump);
+    RUN_TEST(test_idle_ms_during_backoff);
     return UNITY_END();
 }

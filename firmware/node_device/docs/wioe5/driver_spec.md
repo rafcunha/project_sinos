@@ -886,9 +886,38 @@ O período conta do início de um envio ao início do próximo.
 - **Payload:** enquanto o driver do sensor ultrassônico não existe, o nó envia um
   *heartbeat* de 3 bytes, `[0x00][contador MSB][contador LSB]`. Ele prova o enlace de ponta
   a ponta sem inventar uma leitura de nível. O tipo `0x00` fica reservado para heartbeat.
-- **Baixo consumo do MCU:** o projeto CubeMX ainda não tem RTC/LPTIM. Por isso, entre
-  envios, o MCU entra só em **Sleep** (`__WFI`, acordado pelo SysTick a cada 1 ms), não em
-  Stop 2. O ponto de troca é `idle_mcu()` em `app_node.c`, já condicionado a
-  `wioe5_can_stop()`. Falta configurar no CubeMX o RTC com *wakeup timer* (LSE ou LSI).
-- **Chaves:** o firmware não grava AppEUI/AppKey (`provision = NULL`). Elas precisam ser
-  gravadas uma vez no módulo pelo terminal (§16.3).
+
+### 18.3 Baixo consumo do MCU (Stop 2 com RTC)
+
+RTC no LSE (32,768 kHz, PC14/PC15), prescalers 127/255 (1 Hz), *wakeup timer* interno com
+interrupção `RTC_IRQn`. O CubeMX liga o *wakeup timer* no init; `USER CODE RTC_Init 2`
+desliga-o, e a aplicação só o programa antes de cada Stop 2.
+
+`idle_mcu()` em `app_node.c` decide a cada volta do laço:
+
+| Condição                                                          | Modo              |
+|-------------------------------------------------------------------|-------------------|
+| `app_lorawan_can_idle()` falso (operação em andamento)            | nenhum (roda)     |
+| espera < 1,5 s **ou** `wioe5_can_stop()` falso (módulo acordado)  | Sleep (`__WFI`)   |
+| espera ≥ 1,5 s **e** módulo dormindo                              | **Stop 2**        |
+
+Sequência do Stop 2:
+1. Lê a hora do RTC (com subsegundos).
+2. Programa o *wakeup* para `floor(espera / 1 s)` segundos (máximo 65 536 s); o resto
+   da espera roda em Sleep.
+3. `HAL_SuspendTick()` e `HAL_PWREx_EnterSTOP2Mode(PWR_STOPENTRY_WFI)`.
+4. Ao acordar: `SystemClock_Config()`, desliga o *wakeup timer* e soma ao `uwTick` o tempo
+   dormido medido no RTC. Assim `HAL_GetTick()` continua refletindo o tempo real, e o
+   período do ciclo e os timeouts do driver não se perdem.
+5. `HAL_ResumeTick()` e `wioe5_port_stm32_resume()` (rearma a RX da UART).
+
+Em builds Debug, `HAL_DBGMCU_EnableDBGStopMode()` mantém o depurador conectado durante o
+Stop 2. Isso aumenta o consumo; **medições de corrente devem usar a build Release**.
+
+A lógica de "quanto dormir" (`app_lorawan_idle_ms`) é testada no host (APP-07/08). A
+entrada e a saída do Stop 2 em si só podem ser validadas na placa (HIL-09/10).
+
+### 18.4 Chaves
+
+O firmware não grava AppEUI/AppKey (`provision = NULL`). Elas precisam ser gravadas uma
+vez no módulo pelo terminal (§16.3).

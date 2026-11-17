@@ -227,6 +227,24 @@ bool app_lorawan_can_idle(const app_lorawan_t *app)
            !app->unresponsive;
 }
 
+uint32_t app_lorawan_idle_ms(const app_lorawan_t *app)
+{
+    uint32_t start;
+    uint32_t span;
+    if (!app_lorawan_can_idle(app)) {
+        return 0u;
+    }
+    if (app->state == S_PERIOD) {
+        start = app->cycle_start;
+        span  = app->cfg.uplink_period_ms;
+    } else {
+        start = app->wait_start;
+        span  = app->wait_ms;
+    }
+    uint32_t elapsed = (uint32_t)(now(app) - start);
+    return (elapsed >= span) ? 0u : (span - elapsed);
+}
+
 const app_lorawan_stats_t *app_lorawan_stats(const app_lorawan_t *app)
 {
     return &app->stats;

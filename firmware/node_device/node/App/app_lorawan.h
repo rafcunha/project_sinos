@@ -83,6 +83,12 @@ void app_lorawan_on_downlink(app_lorawan_t *app, const wioe5_downlink_t *dl);
 /** True while only waiting (period or backoff) and the driver is idle. */
 bool app_lorawan_can_idle(const app_lorawan_t *app);
 
+/**
+ * Milliseconds until the cycle needs the CPU again (0 if it needs it now).
+ * Valid when app_lorawan_can_idle() is true; used to program the Stop 2 wakeup.
+ */
+uint32_t app_lorawan_idle_ms(const app_lorawan_t *app);
+
 const app_lorawan_stats_t *app_lorawan_stats(const app_lorawan_t *app);
 
 #endif /* APP_LORAWAN_H */
