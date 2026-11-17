@@ -122,10 +122,12 @@ Versionamento: SemVer (`MAJOR.MINOR.PATCH`), tags `vX.Y.Z` só em `main`.
 | O quê            | Onde                          | Comando                                                        |
 |------------------|-------------------------------|----------------------------------------------------------------|
 | Firmware (ARM)   | `firmware/node_device/node`   | `cmake --preset Debug` e `cmake --build --preset Debug`        |
-| Testes do host   | `firmware/node_device/tests`  | `cmake -S . -B build -G Ninja` e `cmake --build build` e `ctest --test-dir build --output-on-failure` |
+| Testes do host   | `firmware/node_device/tests`  | `cmake --preset host` e `cmake --build --preset host` e `ctest --preset host` |
 
 Ferramentas: `arm-none-eabi-gcc` (STM32CubeCLT ou o do STM32CubeIDE), CMake ≥ 3.22, Ninja,
-e um gcc do host (MSYS2 UCRT64 ou WSL) para os testes.
+e um gcc do host para os testes (no Windows: `winget install --id BrechtSanders.WinLibs.POSIX.UCRT -e`).
+Bibliotecas de terceiros usadas nos testes ficam vendorizadas e sem modificação em
+`tests/vendor/` (hoje: Unity v2.6.0).
 
 Se uma ferramenta não estiver instalada, **diga isso ao usuário** — não marque o checklist
 como cumprido sem ter rodado.

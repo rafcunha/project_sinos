@@ -45,11 +45,19 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    Lib/wioe5/src/wioe5.c
+    Lib/wioe5/src/wioe5_hex.c
+    Lib/wioe5/src/wioe5_line.c
+    Lib/wioe5/src/wioe5_parse.c
+    Lib/wioe5/src/wioe5_ringbuf.c
+    Lib/wioe5/port/wioe5_port_stm32.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    Lib/wioe5/inc
+    Lib/wioe5/port
 )
 
 # Add project symbols (macros)
