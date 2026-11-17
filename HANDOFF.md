@@ -141,6 +141,9 @@ Debug na placa pela linha de comando: ver AGENTS.md §4.1. Resumo:
 
 ## 6. Próximos passos (em ordem de prioridade)
 
+O usuário pediu também a **pipeline de CI/CD (6.7.1)**: ela não depende de hardware e pode
+ser feita a qualquer momento, de preferência antes da primeira release.
+
 Sugestão: **6.1 e 6.2 em paralelo** (6.1 depende de hardware/cadastro do usuário; 6.2 é
 firmware). **6.5 (watchdog)** antes de qualquer teste longo em campo.
 
@@ -207,7 +210,63 @@ host → implementação. A spec deve decidir:
 - [ ] Alarmes por limiar com envio imediato.
 
 ### 6.7 Engenharia do repositório
-- [ ] CI no GitHub Actions: `ubuntu-latest`, preset `host-sanitize` (ASan/UBSan) + `ctest`.
+
+#### 6.7.1 Pipeline de CI/CD (GitHub Actions)  ⟵ pedido do usuário
+
+Objetivo: **testar todo push/PR** e, na `main`, **gerar e publicar o `.bin` do firmware**.
+Arquivos em `.github/workflows/`. Siga o git flow: branch `feature/ci-cd`.
+
+**Workflow `ci.yml`** — dispara em `push` e `pull_request` para `develop`, `main`,
+`feature/**`, `release/**` e `hotfix/**`:
+
+- [ ] Job **host-tests** (`ubuntu-latest`): instalar `cmake`, `ninja-build` e `gcc`; em
+      `firmware/node_device/tests`, rodar `cmake --preset host-sanitize`,
+      `cmake --build --preset host-sanitize` e `ctest --preset host-sanitize` (ASan/UBSan).
+      Rodar também o preset `host`. Publicar o relatório do `ctest` como artefato.
+- [ ] Job **firmware-build** (`ubuntu-latest`), matriz `Debug` + `Release`: instalar o
+      `arm-none-eabi-gcc` **14.3** (mesma versão travada em `node/.settings/bundles-lock.store.json`;
+      ex.: action `carlosperate/arm-none-eabi-gcc-action` com `release: '14.3.Rel1'`, ou o
+      tarball oficial da Arm), mais `cmake` e `ninja`. Em `firmware/node_device/node`:
+      `cmake --preset <cfg>` e `cmake --build --preset <cfg>`. O build deve falhar com warning:
+      passar `-Werror` no CI, por exemplo via `CMAKE_C_FLAGS`, sem mudar o build local.
+- [ ] Gerar `node.bin` e `node.hex` com `arm-none-eabi-objcopy -O binary|ihex` e imprimir o
+      tamanho com `arm-none-eabi-size`. Melhor: adicionar um `add_custom_command(POST_BUILD)`
+      no `node/CMakeLists.txt` para gerar `.bin`/`.hex` também no build local.
+- [ ] Publicar `node.elf`, `node.bin`, `node.hex` e `node.map` como artefatos do workflow
+      (`actions/upload-artifact`).
+- [ ] Cache das ferramentas (`actions/cache`) para não baixar o toolchain a cada execução.
+
+**Workflow `release.yml`** (o "deploy") — dispara em `push` na `main` (merge de
+`release/*` ou `hotfix/*`) e em tags `v*`:
+
+- [ ] Reaproveitar os jobs acima (workflow reutilizável com `workflow_call`) e só seguir se
+      tudo passar.
+- [ ] Build **Release**. Nome do binário com versão e commit, ex.:
+      `node-v0.1.0-<sha7>.bin`, mais `.hex`, `.elf` e `SHA256SUMS.txt`.
+- [ ] Gravar a versão no firmware: passar `-DFW_VERSION="v0.1.0"` e `-DFW_GIT_SHA=...` pelo
+      CMake (ex.: lidos de `git describe --tags`), para o firmware conseguir reportá-la
+      (útil no payload de status do passo 6.3).
+- [ ] Criar um **GitHub Release** para a tag com os artefatos anexados (ex.:
+      `softprops/action-gh-release`, ou `gh release create` no runner). Notas da release
+      geradas a partir dos commits (Conventional Commits).
+- [ ] Permissões mínimas no workflow: `contents: write` só no job que publica a release.
+
+**Cuidados conhecidos:**
+- O build roda em Linux: confira se nos `#include` maiúsculas/minúsculas batem com os nomes
+  dos arquivos (o Windows não diferencia, o Linux sim).
+- O toolchain file `cmake/gcc-arm-none-eabi.cmake` espera `arm-none-eabi-gcc` no PATH.
+- `gh` não está instalado nesta máquina; para acompanhar o CI daqui, instale (`winget install GitHub.cli`)
+  ou use a aba Actions do repositório.
+- Depois que o CI estiver verde, pedir ao usuário para ativar a proteção de `main`/`develop`
+  exigindo os checks `host-tests` e `firmware-build`.
+- "Deploy" aqui é **publicar o `.bin` versionado**. Gravar na placa em campo (FOTA) não existe:
+  o Wio-E5/LoRaWAN não comporta atualização de firmware do STM32 pelo ar sem um projeto
+  próprio. Se o usuário quiser, abrir como item separado.
+
+**Pronto quando:** um PR para `develop` mostra os checks de teste e de build; um merge na
+`main` com tag `vX.Y.Z` gera um GitHub Release com o `.bin` e os checksums.
+
+#### 6.7.2 Outros itens
 - [ ] Primeira release pelo git flow: `release/0.1.0` → `main` + tag `v0.1.0` → volta para `develop`.
       Só com pedido do usuário.
 - [ ] Proteção de `main`/`develop` no GitHub (feito pelo usuário nas configurações do repo).
