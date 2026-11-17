@@ -1,0 +1,24 @@
+# Normalize line endings in the repo; checkout uses the platform default.
+* text=auto
+
+*.c    text
+*.h    text
+*.s    text
+*.ld   text
+*.md   text
+*.txt  text
+*.json text
+*.cmake text
+CMakeLists.txt text
+
+# STM32CubeMX files are written with CRLF by the tool; keep them CRLF to avoid noisy diffs.
+*.ioc       text eol=crlf
+.mxproject  text eol=crlf
+
+# Binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.a   binary
+*.elf binary
+*.bin binary
