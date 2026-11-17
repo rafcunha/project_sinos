@@ -47,16 +47,19 @@ LoRaWAN. Este driver é a única peça do firmware que conversa com o Wio-E5. El
 | Clock do periférico | PCLK2 (160 MHz)                                                  |
 | FIFO                | desabilitada                                                     |
 | Interrupção         | `USART1_IRQn` habilitada (prioridade 0) ✔                        |
-| Reset do módulo     | **não conectado** — ver P2                                       |
+| Reset do módulo     | `PA0` (`reset_wioe5`) → `RST` do Wio-E5 — configuração em P2     |
 
 **Pré-requisitos no CubeMX:**
 
 - **P1** ✔ — `USART1 global interrupt` habilitada. A recepção é por interrupção (byte a
   byte) alimentando um ring buffer. A 9600 baud isso dá ~960 interrupções/s no máximo,
   carga desprezível. DMA circular + IDLE fica como otimização futura.
-- **P2** — (**Recomendado**) Ligar o pino `RST` do Wio-E5 a um GPIO livre do STM32,
-  configurado como **saída open-drain, sem pull, nível inicial alto** (liberado). O `RST`
-  do Wio-E5 é o NRST do STM32WLE5, ativo em nível baixo e já com pull-up interno.
+- **P2** — `RST` do Wio-E5 ligado em **`PA0`** (label `reset_wioe5`). Configuração exigida:
+  **saída open-drain, sem pull, nível inicial alto** (liberado). O `RST` do Wio-E5 é o
+  NRST do STM32WLE5, ativo em nível baixo e já com pull-up interno. O NRST também é
+  puxado para baixo pelo próprio módulo (watchdog, brown-out). Com push-pull em nível alto
+  haveria disputa elétrica nesse momento. Por isso tem de ser open-drain. A porta STM32
+  implementa `set_reset(true)` escrevendo nível baixo e `set_reset(false)` liberando.
   Motivo: `AT+RESET` só funciona se o interpretador AT do módulo ainda estiver respondendo.
   Num nó de campo sem acesso físico, o reset por hardware é a única saída se o módulo
   travar. O driver funciona sem o pino (`set_reset = NULL`); nesse caso a recuperação fica
@@ -657,9 +660,9 @@ firmware/node_device/
 | #  | Questão                                                       | Situação                                                                                       |
 |----|---------------------------------------------------------------|------------------------------------------------------------------------------------------------|
 | Q1 | Região e sub-banda                                            | **Decidido:** Rio dos Sinos/RS → `AU915`, sub-banda 2 (canais 8–15 + 65), a mesma do TTN no Brasil |
-| Q2 | Network server                                                | **Decidido para testes:** The Things Network (§16). Servidor definitivo fica para depois; só muda a configuração, não o driver |
+| Q2 | Network server                                                | **Adiado.** Avaliado o TTN (§16), viável; fica para depois. Os testes com rede (N4: HIL-02 a 05, 08, 09) aguardam |
 | Q3 | Chaves: gravadas uma vez via terminal ou pelo firmware?       | Padrão mantido: gravar uma vez via terminal (§16.3); `provision = NULL`                         |
-| Q4 | Pino `RST` ligado a um GPIO?                                  | **Hoje não.** Recomendado ligar (P2). Driver suporta os dois casos                              |
+| Q4 | Pino `RST` ligado a um GPIO?                                  | **Decidido:** `PA0`, open-drain (P2)                                                           |
 | Q5 | Uplinks confirmados ou não?                                   | Padrão mantido: não confirmados (energia e limite de downlinks do TTN, §16.4)                   |
 | Q6 | `AT+LOG` é persistente?                                       | Verificar em bancada (§15.1); enviar sempre no setup                                           |
 | Q7 | Stop 2 ou Standby entre medições?                             | **Decidido:** Stop 2 (§10.7)                                                                   |
@@ -685,6 +688,9 @@ adaptador USB-UART + terminal (9600 8N1) as respostas reais e salvar como *fixtu
 ---
 
 ## 16. Ambiente de teste com The Things Network
+
+> **Adiado.** O foco atual é só a comunicação MCU ↔ Wio-E5. Esta seção fica registrada
+> para quando os testes com rede forem retomados.
 
 ### 16.1 Avaliação: é viável?
 
