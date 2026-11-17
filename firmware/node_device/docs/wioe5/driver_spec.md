@@ -844,3 +844,51 @@ spec e o teste juntos.
 | `start_reset`                   | permitido em `UNINIT`, `IDLE` e `SLEEPING`. Sem pino e dormindo: acorda antes do `AT+RESET`. Termina em `UNINIT` mesmo com sucesso |
 | `wioe5_can_stop`                | `true` em `UNINIT` ou `SLEEPING`, sem operação e com ring buffer vazio                                  |
 | `wioe5_wait`                    | sem operação em andamento, retorna `wioe5_last_result()` na hora                                        |
+
+---
+
+## 18. Integração no firmware do nó
+
+O driver é usado pela camada de aplicação em `node/App/`:
+
+| Arquivo          | Papel                                                                                   | HAL? |
+|------------------|-----------------------------------------------------------------------------------------|------|
+| `app_lorawan.c/h`| Ciclo de uplink e política de retentativa (D8). Testado no host (`test_app_lorawan.c`) | não  |
+| `app_node.c/h`   | Instâncias, callbacks da HAL (`HAL_UART_RxCpltCallback`/`ErrorCallback`), payload e política de ociosidade | sim  |
+
+`main.c` só chama `app_node_init(&huart1)` em `USER CODE 2` e `app_node_process()` no laço
+(`USER CODE 3`). O código gerado pelo CubeMX não foi alterado fora das seções USER CODE.
+
+### 18.1 Ciclo e política
+
+```
+setup ──ok──▶ join ──ok──▶ send ─▶ sleep do módulo ─▶ espera o período ─┐
+  ▲  falha:      │ falha:                                               │
+  │  espera 10 s │ backoff 15 s → 30 s → … → 30 min                     │
+  │              │ (nunca menos que "No band in N ms")                  │
+  │              ◀── "Please join network first" no send ───────────────┤
+  └── reset do módulo ◀── WIOE5_EVT_UNRESPONSIVE (3 timeouts seguidos)  │
+                                                   próximo send ◀───────┘
+```
+
+| Parâmetro (`app_lorawan_cfg_t`) | Padrão  |
+|---------------------------------|---------|
+| `uplink_period_ms`              | 15 min  |
+| `fport`                         | 1       |
+| `confirmed`                     | `false` |
+| `join_backoff_min_ms` / `max`   | 15 s / 30 min |
+| `fail_backoff_ms`               | 10 s    |
+
+O período conta do início de um envio ao início do próximo.
+
+### 18.2 Provisório até existir o resto do nó
+
+- **Payload:** enquanto o driver do sensor ultrassônico não existe, o nó envia um
+  *heartbeat* de 3 bytes, `[0x00][contador MSB][contador LSB]`. Ele prova o enlace de ponta
+  a ponta sem inventar uma leitura de nível. O tipo `0x00` fica reservado para heartbeat.
+- **Baixo consumo do MCU:** o projeto CubeMX ainda não tem RTC/LPTIM. Por isso, entre
+  envios, o MCU entra só em **Sleep** (`__WFI`, acordado pelo SysTick a cada 1 ms), não em
+  Stop 2. O ponto de troca é `idle_mcu()` em `app_node.c`, já condicionado a
+  `wioe5_can_stop()`. Falta configurar no CubeMX o RTC com *wakeup timer* (LSE ou LSI).
+- **Chaves:** o firmware não grava AppEUI/AppKey (`provision = NULL`). Elas precisam ser
+  gravadas uma vez no módulo pelo terminal (§16.3).

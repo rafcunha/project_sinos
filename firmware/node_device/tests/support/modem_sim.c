@@ -136,7 +136,11 @@ void sim_tick(modem_sim_t *sim)
         activate(sim);
     }
     deliver_due(sim);
-    wioe5_process(sim->dev);
+    if (sim->process != NULL) {
+        sim->process(sim->process_ctx);
+    } else {
+        wioe5_process(sim->dev);
+    }
     check_tx(sim);
     sim->fp->now++;
 }

@@ -34,6 +34,13 @@ target_include_directories(wioe5
 )
 target_compile_options(wioe5 PRIVATE ${STRICT_WARNINGS})
 
+# ---- Application cycle (hardware-independent part of node/App) -----------
+set(APP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../node/App)
+add_library(app_core STATIC ${APP_DIR}/app_lorawan.c)
+target_include_directories(app_core PUBLIC ${APP_DIR})
+target_link_libraries(app_core PUBLIC wioe5)
+target_compile_options(app_core PRIVATE ${STRICT_WARNINGS})
+
 # ---- Test support ---------------------------------------------------------
 add_library(test_support STATIC
     support/fake_port.c
@@ -69,11 +76,12 @@ set(WIOE5_TESTS
     test_op_join
     test_op_send
     test_op_power
+    test_app_lorawan
 )
 
 foreach(t ${WIOE5_TESTS})
     add_executable(${t} ${t}.c)
-    target_link_libraries(${t} PRIVATE test_support)
+    target_link_libraries(${t} PRIVATE test_support app_core)
     target_compile_options(${t} PRIVATE -Wall -Wextra -Werror)
     add_test(NAME ${t} COMMAND ${t})
     set_tests_properties(${t} PROPERTIES TIMEOUT 60)
