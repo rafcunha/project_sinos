@@ -200,25 +200,35 @@ typedef struct wioe5 {
     size_t           dl_len;
     uint8_t          dl_port;
     bool             dl_pending;
+    int16_t          dl_rssi;
+    int16_t          dl_snr;
+    uint8_t          dl_window;
 
-    uint8_t          state;        /* driver state (private enum)      */
-    uint8_t          op;           /* wioe5_op_t in progress           */
-    uint8_t          phase;        /* step within the operation        */
-    uint8_t          sub;          /* sub-step / per-step flags        */
+    uint8_t          state;        /* base state (private enum)              */
+    uint8_t          op;           /* wioe5_op_t in progress                 */
+    uint8_t          phase;        /* step within the operation              */
+    uint8_t          wphase;       /* step within the embedded wake sequence */
     uint8_t          attempts;
+    uint8_t          wattempts;
+    uint8_t          act;          /* current action (private enum)          */
+    wioe5_status_t   act_status;   /* result of the finished action          */
+    uint8_t          cur_cmd;      /* command in flight (private enum)       */
+    uint32_t         cmd_arg;      /* expected echo value                    */
+    uint32_t         cmd_timeout;  /* base timeout of the pending command    */
     bool             force_join;
     bool             setup_done;
     bool             module_port_known;
     uint8_t          module_port;
-    bool             cmd_in_flight;
+    bool             msg_confirmed;
+    bool             msg_flush;
     bool             acked;
     bool             netid_seen;
     bool             join_failed;
     bool             unresponsive_reported;
     bool             rx_seen;
     uint32_t         last_rx_ms;
-    uint32_t         t_mark;       /* start of current wait            */
-    uint32_t         t_limit;      /* length of current wait           */
+    uint32_t         t_mark;       /* start of current command / wait        */
+    uint32_t         t_limit;      /* length of current command / wait       */
     uint32_t         seen_rx_overflows;
     wioe5_status_t   result;
 } wioe5_t;
