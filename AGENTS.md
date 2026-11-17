@@ -3,6 +3,27 @@
 Este arquivo vale para qualquer agente de código (Claude Code, Codex, Copilot etc.) e para
 humanos. Leia inteiro antes de alterar qualquer coisa.
 
+## 0. Comece por aqui: HANDOFF.md
+
+[HANDOFF.md](HANDOFF.md) é a memória do projeto entre sessões: estado atual, o que já foi
+validado na placa, ambiente e comandos, armadilhas já encontradas, decisões tomadas, próximos
+passos e perguntas em aberto com o usuário.
+
+- **No início de toda sessão**, leia o HANDOFF.md antes de propor ou alterar qualquer coisa.
+  Se ele contradisser o código ou o git, confie no código/git e corrija o HANDOFF.md.
+- **Mantenha-o atualizado sempre.** Atualize na mesma branch do trabalho, antes do merge em
+  `develop`, quando:
+  - um passo da lista de próximos passos for concluído ou mudar de escopo;
+  - uma decisão for tomada ou revertida (com o usuário);
+  - algo for validado (ou falhar) na placa;
+  - você descobrir uma armadilha que custou tempo (ferramenta, CubeMX, debugger, git no Windows);
+  - mudar o ambiente: ferramentas, caminhos, comandos de build/teste/debug;
+  - uma pergunta em aberto for respondida ou surgir outra.
+- Atualize também a data e o resumo do topo. Escreva para quem não viu esta conversa:
+  fatos verificáveis, com caminhos de arquivo e comandos, e sem "como vimos antes".
+- Se a sessão terminar no meio de uma tarefa, registre no HANDOFF.md onde parou, em qual
+  branch e o que falta, mesmo que o trabalho não tenha sido mergeado.
+
 ## 1. O projeto
 
 **project_sinos** — monitoramento da altura de rio por LoRaWAN.
@@ -18,7 +39,8 @@ project_sinos/
 │   │   ├── tests/              testes no host (Unity + CMake)
 │   │   └── docs/               especificações e planos de teste
 │   └── gateway/                firmware do gateway
-└── AGENTS.md
+├── AGENTS.md                   regras do repositório (este arquivo)
+└── HANDOFF.md                  estado atual e próximos passos (ler primeiro)
 ```
 
 ## 2. Git flow
@@ -80,6 +102,7 @@ git branch -d feature/<escopo>-<descricao>
 - [ ] Nenhum segredo (AppKey, NwkSKey, AppSKey, tokens) em código, log ou commit.
 - [ ] `git status` limpo; sem arquivos de build versionados.
 - [ ] O usuário revisou e aprovou o resultado (para mudanças de especificação ou de API).
+- [ ] `HANDOFF.md` atualizado com o que mudou (seção 0).
 
 ### 2.5 Release e hotfix
 

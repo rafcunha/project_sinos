@@ -305,8 +305,8 @@ não precisam de gateway.
 | `test_op_join.c`   | 14      | TC-JN-01..13                                                    |
 | `test_op_send.c`   | 23      | TC-TX-01..20                                                    |
 | `test_op_power.c`  | 19      | TC-PW-01..16                                                    |
-| `test_app_lorawan.c` | 6     | APP-01..06: ciclo completo, backoff de join, `No band`, re-join, reset por `UNRESPONSIVE` (spec §18) |
-| **Total**          | **155** |                                                                 |
+| `test_app_lorawan.c` | 8     | APP-01..08: ciclo completo, backoff de join, `No band`, re-join, reset por `UNRESPONSIVE`, tempo ocioso para o Stop 2 (spec §18) |
+| **Total**          | **157** |                                                                 |
 
 Os IDs com sufixo (`b`, `c`) e os números além das tabelas acima são casos acrescentados
 durante a escrita. Cada função de teste tem o ID no comentário acima dela.
