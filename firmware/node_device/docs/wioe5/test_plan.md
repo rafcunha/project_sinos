@@ -94,7 +94,7 @@ Convenção: **TC-<área>-<nn>**. "Esperado" descreve o que o teste verifica.
 |-----------|---------------------------------------------------------------|--------------------------------------------------------|
 | TC-RB-01  | Buffer novo                                                    | vazio; `pop` falha                                     |
 | TC-RB-02  | Push/pop de 1 byte                                             | mesmo byte, buffer vazio depois                        |
-| TC-RB-03  | Preenche até capacidade−1                                      | todos os pushes aceitos, ordem FIFO preservada          |
+| TC-RB-03  | Preenche até a capacidade (= tamanho, §17.2 da spec)          | todos os pushes aceitos, ordem FIFO preservada          |
 | TC-RB-04  | Push com buffer cheio                                          | byte descartado, contador de overflow +1, conteúdo intacto |
 | TC-RB-05  | Wrap-around (N ciclos de push/pop > capacidade)                | ordem e conteúdo corretos                              |
 | TC-RB-06  | Índices perto de `UINT32_MAX`                                  | sem corrupção no estouro do contador                   |
@@ -113,7 +113,7 @@ Convenção: **TC-<área>-<nn>**. "Esperado" descreve o que o teste verifica.
 | TC-LN-08  | Texto sem `+` (`garbage\r\n`)                    | descartada; `unknown_lines` +1                         |
 | TC-LN-09  | Linha com `WIOE5_LINE_MAX` caracteres            | aceita                                                 |
 | TC-LN-10  | Linha com `WIOE5_LINE_MAX + 1` caracteres + linha válida | 1ª descartada com evento de overflow; 2ª entregue intacta |
-| TC-LN-11  | Byte `0x00` no meio da linha                     | linha descartada ou byte ignorado (definir na implementação; teste fixa o comportamento) |
+| TC-LN-11  | Byte `0x00` no meio da linha                     | byte descartado; linha entregue sem ele                |
 
 ### 2.3 L2 — Parser genérico e específico (`test_parse.c`, tabela)
 
@@ -123,7 +123,7 @@ Convenção: **TC-<área>-<nn>**. "Esperado" descreve o que o teste verifica.
 | TC-PR-02  | `+at: ok`                                               | casa com `AT` (case-insensitive)                   |
 | TC-PR-03  | `+MSG: ERROR(-12)`                                      | erro, código −12                                   |
 | TC-PR-04  | `+CMSGHEX: ERROR(-1)`                                   | erro, código −1                                    |
-| TC-PR-05  | `+AT: ERROR(abc)` / `+AT: ERROR(`                       | não é erro válido → `UNEXPECTED`                   |
+| TC-PR-05  | `+AT: ERROR(abc)` / `+AT: ERROR(`                       | `is_error = false` (o motor trata como `UNEXPECTED`) |
 | TC-PR-06  | `+VER: 4.0.11`                                          | versão `"4.0.11"`                                  |
 | TC-PR-07  | `+ID: DevEui, 2C:F7:F1:20:42:00:12:34`                  | 8 bytes corretos                                   |
 | TC-PR-08  | `+ID: DevEui, 2C:F7:F1` (curto) / dígito inválido       | falha de parse                                     |
@@ -254,6 +254,9 @@ Convenção: **TC-<área>-<nn>**. "Esperado" descreve o que o teste verifica.
 
 ### 2.10 N3 — Replay (`test_replay.c`)
 
+> **Pendente:** depende das capturas de bancada (§15.1 da spec). O `test_replay.c` e o
+> leitor de fixtures serão escritos junto com as primeiras capturas.
+
 Um caso por arquivo em `tests/fixtures/`. Mínimo exigido, capturado em bancada:
 
 | Fixture                     | Conteúdo                                         |
@@ -289,7 +292,39 @@ não precisam de gateway.
 
 ---
 
-## 4. Critérios de saída
+## 4. Situação da implementação dos testes
+
+| Arquivo            | Testes  | Cobre                                                           |
+|--------------------|---------|-----------------------------------------------------------------|
+| `test_ringbuf.c`   | 8       | TC-RB-00..07                                                    |
+| `test_line.c`      | 13      | TC-LN-01..13                                                    |
+| `test_parse.c`     | 27      | TC-PR-01..28                                                    |
+| `test_hex.c`       | 7       | TC-HX-01..06                                                    |
+| `test_engine.c`    | 19      | TC-CF-01..04, TC-EN-01..15 (TC-EN-10 está em `test_op_send.c`)  |
+| `test_op_setup.c`  | 18      | TC-SU-01..14                                                    |
+| `test_op_join.c`   | 14      | TC-JN-01..13                                                    |
+| `test_op_send.c`   | 23      | TC-TX-01..20                                                    |
+| `test_op_power.c`  | 19      | TC-PW-01..16                                                    |
+| **Total**          | **148** |                                                                 |
+
+Os IDs com sufixo (`b`, `c`) e os números além das tabelas acima são casos acrescentados
+durante a escrita. Cada função de teste tem o ID no comentário acima dela.
+
+Os testes foram escritos **antes** do driver. Com os stubs atuais, tudo compila sem
+warnings e 144 dos 148 testes falham. Os 4 que passam são testes de rejeição de entrada;
+passam por acaso, porque o stub sempre retorna `false`.
+
+Comandos (em `firmware/node_device/tests`):
+
+```
+cmake --preset host
+cmake --build --preset host
+ctest --preset host
+```
+
+O CI (GitHub Actions) fica para quando o repositório for enviado ao GitHub.
+
+## 5. Critérios de saída
 
 - Todos os TC de N1–N3 passam no CI, sem warnings, com sanitizers no Linux.
 - Cobertura de linhas ≥ 90 % em `Lib/wioe5/src/`; todos os valores de `wioe5_status_t`

@@ -762,3 +762,53 @@ Para a última linha o TTN atende bem:
 - **Downlink:** até 10 por dispositivo por dia, contando os ACKs de uplinks confirmados.
   Por isso o padrão é uplink **não confirmado** (Q5). O teste HIL-04 (downlink) usa um
   downlink agendado manualmente no console.
+
+---
+
+## 17. Contratos definidos na fase de testes
+
+Os testes do host (`firmware/node_device/tests/`) fixaram estes detalhes, que antes estavam
+em aberto ou implícitos. A implementação deve segui-los. Mudar algum deles exige mudar a
+spec e o teste juntos.
+
+### 17.1 Módulos internos e headers
+
+| Header                     | Camada | Visibilidade                                         |
+|----------------------------|--------|------------------------------------------------------|
+| `inc/wioe5.h`              | API    | pública                                              |
+| `inc/wioe5_config.h`       | —      | pública (tamanhos, sobrescrevíveis com `-D`)          |
+| `inc/wioe5_ringbuf.h`      | L0     | interna; em `inc/` só porque `wioe5_t` a embute      |
+| `inc/wioe5_line.h`         | L1     | interna; idem                                        |
+| `src/wioe5_parse.h`        | L2     | interna (testada diretamente)                        |
+| `src/wioe5_hex.h`          | L2     | interna (testada diretamente)                        |
+
+`wioe5_config_default()` substitui a macro `WIOE5_CONFIG_DEFAULT` citada na §11.
+
+### 17.2 Regras fixadas
+
+| Assunto                         | Regra                                                                                                   |
+|---------------------------------|---------------------------------------------------------------------------------------------------------|
+| Ring buffer                     | índices livres de 32 bits; tamanho potência de 2; **capacidade = tamanho** (não tamanho − 1)            |
+| Montador de linhas              | `\r` e `NUL` descartados em qualquer posição; overflow reportado uma vez por linha                      |
+| `ERROR(...)` malformado         | não é erro (`is_error = false`); no motor vira `WIOE5_ERR_UNEXPECTED`                                   |
+| `start_*`                       | só enfileira; o primeiro byte sai no próximo `wioe5_process()`                                          |
+| Guarda de RX                    | conta a partir do último byte recebido; sem bytes recebidos, não há espera                              |
+| Tempo de TX no timeout          | `ceil(len × 1,1)` ms somado ao timeout do passo; o prazo conta a partir do `write()`                    |
+| Timeout                         | dispara no `process()` em que `now − t_write ≥ limite` (exatamente no limite)                           |
+| `wioe5_init`                    | `WIOE5_ERR_PARAM` se `write`/`now_ms`/`band` forem nulos, `default_port` fora de 1..223 ou `rept == 0`  |
+| Eco no setup                    | conferido em `MODE` (valor), `ADR` (ON/OFF) e `PORT`/`RETRY`/`REPT` (número). `DR`, `CH` e `LOG` aceitam qualquer resposta sem erro até a validação em bancada (§15.1) |
+| Probe `AT` no setup             | até 3 tentativas; erro ou silêncio contam como tentativa falha                                          |
+| Probe `AT` no wake              | até 2 tentativas; se falhar, o driver continua considerando o módulo dormindo                            |
+| `AT+LOG=QUIET`                  | opcional: erro **ou timeout** não abortam o setup                                                       |
+| `send` com `len == 0`           | envia `AT+MSGHEX`/`AT+CMSGHEX` sem `=` e **pula** a checagem `AT+LW=LEN`                                |
+| `send` antes do join            | permitido; o próprio módulo responde `Please join network first`                                        |
+| Payload                         | copiado em `start_send`; o buffer do chamador pode ser reutilizado logo depois                          |
+| Downlink                        | entregue em `on_downlink` no `Done`, antes de `on_op_done`. Sem linha de RSSI: `rssi = INT16_MIN` e `rx_window = 0xFF` |
+| `JOIN: Done` sem `NetID`        | `WIOE5_ERR_UNEXPECTED` (a confirmar em bancada)                                                         |
+| URC `+JOIN: NetID … / Done` fora de operação | atualiza `joined`/`dev_addr` e emite `WIOE5_EVT_JOINED`                                     |
+| URC `+LOWPOWER: WAKEUP` com o módulo dormindo | `sleeping = false`, estado `IDLE`, evento `WIOE5_EVT_WOKE`                                 |
+| `start_sleep`                   | `WIOE5_ERR_STATE` antes do setup ou se o módulo já estiver dormindo                                     |
+| `start_wake`                    | `WIOE5_ERR_STATE` se o módulo não estiver dormindo                                                      |
+| `start_reset`                   | permitido em `UNINIT`, `IDLE` e `SLEEPING`. Sem pino e dormindo: acorda antes do `AT+RESET`. Termina em `UNINIT` mesmo com sucesso |
+| `wioe5_can_stop`                | `true` em `UNINIT` ou `SLEEPING`, sem operação e com ring buffer vazio                                  |
+| `wioe5_wait`                    | sem operação em andamento, retorna `wioe5_last_result()` na hora                                        |
