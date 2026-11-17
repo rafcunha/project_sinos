@@ -13,7 +13,7 @@ ultrassônico. Hardware do nó:
 
 | Item                | Detalhe                                                                 |
 |---------------------|-------------------------------------------------------------------------|
-| MCU                 | STM32U585 (Cortex-M33), projeto STM32CubeMX + CMake, sem RTOS            |
+| MCU                 | STM32U585CIU6 (Cortex-M33), projeto STM32CubeMX + CMake, sem RTOS        |
 | Rádio               | Seeed Wio-E5 (STM32WLE5), firmware AT **4.0.11**, DevEUI `2C:F7:F1:20:81:50:5D:50` |
 | UART MCU ↔ Wio-E5   | USART1, PA9 (TX) / PA10 (RX), 9600 8N1, pull-up nos dois pinos, RX por interrupção |
 | Reset do Wio-E5     | PA0 (`reset_wioe5`), open-drain, inicia em **nível baixo** (MCU segura o módulo em reset até o driver liberar) |
@@ -53,7 +53,11 @@ project_sinos/
 │   │   ├── App/app_node.c/h           cola STM32: instâncias, callbacks HAL, payload, Stop 2
 │   │   ├── Lib/wioe5/inc|src          driver (sem HAL)
 │   │   ├── Lib/wioe5/port             porta STM32 (único arquivo do driver com HAL)
-│   │   └── .vscode/launch.json        debug ST-LINK
+│   │   ├── .vscode/                   launch.json (debug ST-LINK), settings.json e
+│   │   │                              c_cpp_properties.json (build/clangd pela extensão ST)
+│   │   ├── .settings/                 versões travadas das ferramentas da extensão ST
+│   │   │                              (bundles-lock): todos compilam com as mesmas versões
+│   │   └── .clangd                    aponta o autocompletar para build/Debug
 │   └── tests/                         testes no host (Unity, fake port, modem simulado)
 │       └── fixtures/                  capturas reais de bancada
 └── firmware/gateway/                  vazio
@@ -113,7 +117,10 @@ Debug na placa pela linha de comando: ver AGENTS.md §4.1. Resumo:
    use `-exec p/x s_wio.info.dev_eui` ou `(char*)` para textos.
 7. **Heredocs grandes no Bash do Windows** às vezes falham ("unexpected EOF"); use a
    ferramenta de escrita de arquivo.
-8. Arquivos gerados pelo CubeMX são CRLF (`.gitattributes` mantém `*.ioc` CRLF); os nossos
+8. **`.gitignore` e subpastas:** uma regra com barra no meio (`.vscode/*`) só vale para a raiz
+   do repositório. Para valer em `node/.vscode`, use `**/.vscode/*`. A extensão ST também
+   cria `node/.gitignore` com `!.settings`, que libera a pasta `.settings/` só naquele projeto.
+9. Arquivos gerados pelo CubeMX são CRLF (`.gitattributes` mantém `*.ioc` CRLF); os nossos
    são LF no repo. Avisos "LF will be replaced by CRLF" são normais.
 
 ---
