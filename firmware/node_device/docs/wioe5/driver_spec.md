@@ -730,6 +730,25 @@ adaptador USB-UART + terminal (9600 8N1) as respostas reais e salvar como *fixtu
 8. Versão do firmware AT do módulo usado (`AT+VER`) e versão LoRaWAN ativa (`AT+LW=VER`),
    que precisa bater com o cadastro no TTN (§16.3).
 
+#### Resultados da primeira bancada (2026-11-17)
+
+Captura pelo buffer `wioe5_trace` (build Debug), lido com o debugger. Fixture:
+`tests/fixtures/bench_setup_join_fail.log`. Sem gateway e sem AppKey gravada.
+
+| Item | Resultado                                                                                     | Situação      |
+|------|-----------------------------------------------------------------------------------------------|---------------|
+| 1    | Falha: `Start` → `NORMAL` → `Join failed` → `Done` (~7 s). Usa `Start`, não `Starting`. O `Done` vem depois do `Join failed`, então o driver termina no `Done` sem precisar da espera de 2 s | falha ✔; sucesso pendente |
+| 2    | —                                                                                             | pendente (precisa de join) |
+| 3    | `+DR: AU915` e `+CH: NUM, 8-15, 65`, uma linha cada                                           | ✔             |
+| 4    | `+LOG: QUIET`                                                                                 | ✔             |
+| 5    | —                                                                                             | pendente (o ciclo só põe o módulo em sleep depois de um envio) |
+| 6    | Depois do reset pelo PA0 e dos 2 s de espera, o primeiro `AT` já respondeu `+AT: OK`. Nenhum lixo chegou ao parser | ✔ (tempo mínimo de boot não medido) |
+| 7    | —                                                                                             | pendente      |
+| 8    | `+VER: 4.0.11`; `AT+LW=VER` não consultado                                                    | parcial       |
+
+Contadores do driver no fim da captura: `uart_errors = 0`, `rx_overflows = 0`,
+`line_overflows = 0`, `unknown_lines = 0`, `consecutive_timeouts = 0`.
+
 ---
 
 ## 16. Ambiente de teste com The Things Network

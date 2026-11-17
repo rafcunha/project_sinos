@@ -1,0 +1,37 @@
+{
+    // Debug configurations for the STM32Cube VS Code extension (ST-LINK GDB server).
+    // Open the folder firmware/node_device/node in VS Code and select the CMake preset "Debug".
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "stlinkgdbtarget",
+            "request": "launch",
+            "name": "Node: Debug (ST-LINK)",
+            "origin": "snippet",
+            "cwd": "${workspaceFolder}",
+            "preBuild": "${command:st-stm32-ide-debug-launch.build}",
+            "runEntry": "main",
+            "imagesAndSymbols": [
+                {
+                    "imageFileName": "${workspaceFolder}/build/Debug/node.elf",
+                    "symbolFileName": "${workspaceFolder}/build/Debug/node.elf"
+                }
+            ],
+            // Keep the debug link alive in Sleep/Stop 2 (the firmware idles between uplinks).
+            "deviceDebugInLowPower": true
+        },
+        {
+            "type": "stlinkgdbtarget",
+            "request": "attach",
+            "name": "Node: Attach (ST-LINK, no reset)",
+            "origin": "snippet",
+            "cwd": "${workspaceFolder}",
+            "imagesAndSymbols": [
+                {
+                    "symbolFileName": "${workspaceFolder}/build/Debug/node.elf"
+                }
+            ],
+            "deviceDebugInLowPower": true
+        }
+    ]
+}

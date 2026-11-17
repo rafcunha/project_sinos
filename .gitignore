@@ -21,8 +21,9 @@ compile_commands.json
 coverage/
 
 # IDE / editor
-.vscode/
+.vscode/*
 !.vscode/extensions.json
+!.vscode/launch.json
 .idea/
 .settings/
 *.launch
