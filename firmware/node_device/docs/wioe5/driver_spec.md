@@ -74,9 +74,11 @@ LoRaWAN. Este driver é a única peça do firmware que conversa com o Wio-E5. El
   Num nó de campo sem acesso físico, o reset por hardware é a única saída se o módulo
   travar. O driver funciona sem o pino (`set_reset = NULL`); nesse caso a recuperação fica
   limitada a `AT+RESET` e ao ciclo de alimentação da placa.
-- **P3** — (Recomendado) Habilitar o **pull-up interno em `PA9` (USART1_TX)**, para que a
-  linha RX do módulo fique em nível alto mesmo se a USART for desinicializada. Qualquer
-  borda nessa linha acorda o módulo (§4.30 do PDF). Ver §10.7.
+- **P3** ✔ — **Pull-up interno em `PA9` (USART1_TX) e `PA10` (USART1_RX).**
+  - `PA9`: mantém a linha RX do módulo em nível alto mesmo se a USART for desinicializada.
+    Qualquer borda nessa linha acorda o módulo (§4.30 do PDF). Ver §10.7.
+  - `PA10`: evita que a entrada RX do MCU flutue enquanto o Wio-E5 está em reset (o TX
+    dele fica em alta impedância), o que geraria bytes falsos e erros de framing.
 
 ---
 
