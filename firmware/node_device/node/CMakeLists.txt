@@ -66,6 +66,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+    # Debug builds keep a 4 KB trace of the Wio-E5 UART traffic (wioe5_trace).
+    $<$<CONFIG:Debug>:WIOE5_PORT_TRACE_SIZE=4096u>
 )
 
 # Remove wrong libob.a library dependency when using cpp files

@@ -37,6 +37,19 @@ typedef struct {
     volatile uint32_t   uart_errors; /**< overrun / framing / noise errors seen       */
 } wioe5_stm32_t;
 
+#ifdef WIOE5_PORT_TRACE_SIZE
+/**
+ * Debug trace of the UART traffic (define WIOE5_PORT_TRACE_SIZE, a power of two).
+ * TX commands are prefixed with "> ", RX bytes are stored raw. Read it with the
+ * debugger: `x/s wioe5_trace.buf` (the buffer wraps; .count is the total written).
+ */
+typedef struct {
+    char              buf[WIOE5_PORT_TRACE_SIZE];
+    volatile uint32_t count;
+} wioe5_trace_t;
+extern wioe5_trace_t wioe5_trace;
+#endif
+
 /** Build the port for @p dev. The returned struct is copied by wioe5_init(). */
 wioe5_port_t wioe5_port_stm32(wioe5_stm32_t *hw, wioe5_t *dev);
 

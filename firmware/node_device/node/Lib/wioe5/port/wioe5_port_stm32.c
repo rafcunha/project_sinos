@@ -9,12 +9,42 @@
 
 #include <stddef.h>
 
+#ifdef WIOE5_PORT_TRACE_SIZE
+wioe5_trace_t wioe5_trace;
+
+static void trace_put(char c)
+{
+    wioe5_trace.buf[wioe5_trace.count & (WIOE5_PORT_TRACE_SIZE - 1u)] = c;
+    wioe5_trace.count++;
+}
+
+static void trace_tx(const uint8_t *data, size_t len)
+{
+    __disable_irq(); /* the RX interrupt also appends */
+    trace_put('>');
+    trace_put(' ');
+    for (size_t i = 0u; i < len; i++) {
+        trace_put((char)data[i]);
+    }
+    if ((len == 0u) || (data[len - 1u] != (uint8_t)'\n')) {
+        trace_put('\n'); /* raw wake byte: keep one entry per line */
+    }
+    __enable_irq();
+}
+#define TRACE_TX(d, n) trace_tx((d), (n))
+#define TRACE_RX(b)    trace_put((char)(b))
+#else
+#define TRACE_TX(d, n) ((void)0)
+#define TRACE_RX(b)    ((void)0)
+#endif
+
 static int port_write(void *ctx, const uint8_t *data, size_t len)
 {
     wioe5_stm32_t *hw = (wioe5_stm32_t *)ctx;
     if (len == 0u) {
         return 0;
     }
+    TRACE_TX(data, len);
     if (len > UINT16_MAX) {
         return -1;
     }
@@ -67,6 +97,7 @@ void wioe5_port_stm32_rx_cplt(wioe5_stm32_t *hw, UART_HandleTypeDef *huart)
     if (huart != hw->huart) {
         return;
     }
+    TRACE_RX(hw->rx_byte);
     wioe5_rx_isr(hw->dev, hw->rx_byte);
     (void)HAL_UART_Receive_IT(hw->huart, &hw->rx_byte, 1u);
 }
