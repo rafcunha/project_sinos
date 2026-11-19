@@ -1,0 +1,112 @@
+# Release ("deploy"): runs on main.
+#  - push to main  -> full CI + versioned firmware package as a workflow artifact
+#  - tag v*        -> same, and publishes a GitHub Release with the .bin/.hex/.elf + SHA256SUMS
+# Git flow: tags vX.Y.Z are created on main when release/* or hotfix/* is merged (AGENTS.md 2.5).
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      sha: ${{ steps.v.outputs.sha }}
+      is_tag: ${{ steps.v.outputs.is_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags are needed by git describe
+
+      - name: Compute version
+        id: v
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME}"
+            is_tag=true
+          else
+            # e.g. v0.1.0-3-g1a2b3c4 after a tag, or 0.0.0-main-1a2b3c4 before the first one
+            version="$(git describe --tags --match 'v*' 2>/dev/null || echo "0.0.0-main-$(git rev-parse --short=7 HEAD)")"
+            is_tag=false
+          fi
+          echo "version=${version}"                         >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse --short=7 HEAD)"         >> "$GITHUB_OUTPUT"
+          echo "is_tag=${is_tag}"                           >> "$GITHUB_OUTPUT"
+          echo "Firmware version: ${version}"
+
+  ci:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      fw-version: ${{ needs.version.outputs.version }}
+
+  package:
+    needs: [version, ci]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Release build
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-Release
+          path: build
+
+      - name: Package
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          base="node-${VERSION}-${SHA}"
+          for ext in bin hex elf map; do
+            cp "build/node.${ext}" "dist/${base}.${ext}"
+          done
+          (cd dist && sha256sum "${base}".* > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-firmware-${{ needs.version.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    if: needs.version.outputs.is_tag == 'true'
+    needs: [version, package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create the GitHub Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: node-firmware-${{ needs.version.outputs.version }}
+          path: dist
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          extra=()
+          [[ "${TAG}" == *-* ]] && extra+=(--prerelease)   # v1.0.0-rc1 -> pre-release
+          gh release create "${TAG}" dist/* \
+            --verify-tag \
+            --title "Node firmware ${TAG}" \
+            --generate-notes \
+            "${extra[@]}"
