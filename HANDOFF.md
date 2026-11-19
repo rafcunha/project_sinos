@@ -156,7 +156,16 @@ seguem bloqueados.
 Sugestão: **6.1 e 6.2 em paralelo** (6.1 depende de hardware/cadastro do usuário; 6.2 é
 firmware). **6.5 (watchdog)** antes de qualquer teste longo em campo.
 
-### 6.1 Fechar o enlace LoRaWAN  ⟵ destrava a validação na placa
+### 6.1 Fechar o enlace LoRaWAN  ⟵ BLOQUEADO: sem gateway (2026-11-19)
+> **Situação:** não há gateway do TTN ao alcance, e o usuário vai **construir um gateway
+> próprio**, mas não agora. Passo a passo de cadastro no TTN já explicado a ele: aplicação →
+> *Register end device* pelo Device Repository (Seeed / Wio-E5, AU915), frequency plan
+> **Australia 915–928 MHz, FSB 2**, JoinEUI `0000000000000000`, DevEUI do módulo, AppKey
+> gerada pelo TTN, cluster `nam1`. Para gravar JoinEUI/AppKey no módulo foram oferecidas duas
+> opções, **ainda sem escolha**: (A) apagar o STM32 (`STM32_Programmer_CLI -c port=SWD -e all`)
+> e usar um adaptador USB-serial de 3,3 V direto no Wio-E5, ou (B) provisionar pelo firmware
+> com um `lorawan_secrets.h` ignorado pelo git (`cfg.provision`).
+
 **Precisa do usuário:** gateway AU915 (sub-banda 2) + servidor de rede (TTN para testes;
 ChirpStack próprio é opção para produção).
 
@@ -267,7 +276,10 @@ o `.bin` versionado. Se o usuário quiser FOTA, abrir item próprio.
       cálculo (segundos de wakeup, compensação do tick) para uma função pura testável.
 
 ### 6.8 Resto do sistema
-- [ ] Gateway: firmware próprio (`firmware/gateway/` está vazio) ou gateway comercial.
+- [ ] Gateway: o usuário decidiu **construir o próprio** (sem data; `firmware/gateway/` está vazio).
+      Requisitos mínimos para destravar 6.1: AU915 sub-banda 2, conectado ao TTN (packet
+      forwarder UDP ou LoRa Basics Station). Alternativa mais rápida, se mudar de ideia:
+      gateway comercial AU915.
 - [ ] Backend: armazenamento, painel, alertas.
 - [ ] Instalação em campo: caixa, antena, fixação do sensor, calibração.
 
@@ -278,7 +290,8 @@ o `.bin` versionado. Se o usuário quiser FOTA, abrir item próprio.
 | #  | Questão                                                        | Bloqueia |
 |----|----------------------------------------------------------------|----------|
 | A  | Modelo e ligação do sensor ultrassônico                         | 6.2      |
-| B  | Gateway e servidor de rede (TTN agora? ChirpStack depois?)      | 6.1      |
+| B  | Gateway e servidor de rede. **Resposta parcial:** sem gateway TTN ao alcance; o usuário vai construir um, sem data | 6.1      |
+| G  | Gravação das chaves no módulo: opção A (terminal) ou B (firmware), ver 6.1 | 6.1      |
 | C  | Estratégia do watchdog com Stop 2                               | 6.5      |
 | D  | Período de envio em produção (padrão 15 min) e amostragem adaptativa | 6.6 |
 | E  | Fonte de energia (bateria, solar) e autonomia desejada          | 6.4      |
