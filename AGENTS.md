@@ -172,6 +172,10 @@ Configurada pelo usuário em *Settings → Rules → Rulesets*:
 | `main`    | branch padrão (`main`) | bloquear exclusão e force push; **exigir pull request** (0 aprovações, porque o projeto tem um único desenvolvedor); **exigir os checks** `host-tests (host)`, `host-tests (host-sanitize)`, `firmware-build (Debug)`, `firmware-build (Release)`; sem histórico linear (o git flow usa merge commits) |
 | `develop` | `develop` | bloquear exclusão e force push |
 
+As duas também têm *Restrict creations*, o que só impede recriar essas branches se forem
+apagadas. Estado conferido ativo em 2026-11-19; para reconferir sem login (repo público):
+`curl -s https://api.github.com/repos/rafcunha/project_sinos/rules/branches/<branch>`.
+
 O `develop` **não** exige checks de propósito: os merges de feature são locais (§2.3), e um
 commit de merge recém-criado ainda não tem CI, então o push seria recusado. O CI roda logo
 depois do push. Se ele ficar vermelho no `develop`, a correção é a próxima prioridade, numa

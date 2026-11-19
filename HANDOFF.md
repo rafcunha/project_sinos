@@ -245,9 +245,10 @@ Artefatos ficam 90 dias.
 
 **Falta:**
 - [ ] `release.yml` só roda na `main`/tags: validar na primeira release (6.7.2).
-- [ ] Proteção de branches: a configuração recomendada está em AGENTS.md §2.7 (passo a passo
-      dado ao usuário em 2026-11-19). **Confirmar com o usuário se ele já aplicou** as rulesets
-      `main` e `develop` no GitHub.
+- [x] Proteção de branches **ativa** (conferida pela API do GitHub em 2026-11-19): ruleset
+      `main` (id 27647885) e `develop` (id 27647967), ambas `enforcement: active`, com as regras
+      de AGENTS.md §2.7. Para reconferir:
+      `curl -s https://api.github.com/repos/rafcunha/project_sinos/rules/branches/main`.
 - [ ] Script para reproduzir o job em WSL sem `sudo` existe só fora do repo; a execução foi
       barrada pelo controle de permissões (o WSL desta máquina não tem gcc/cmake e o `sudo`
       pede senha). Como o CI real funciona, não é mais necessário.
