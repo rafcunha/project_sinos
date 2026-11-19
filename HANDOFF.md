@@ -31,8 +31,8 @@ ultrassônico. Hardware do nó:
   injetados, todos detectados).
 - Firmware Debug e Release compilam sem warnings (Release: ~28,7 KB flash, ~4,3 KB RAM).
 - Debug pelo VS Code (extensão STM32Cube) configurado; trace da UART em builds Debug.
-- CI/CD no GitHub Actions escrito (testes + build + Release com `.bin`), aguardando a
-  primeira execução no GitHub (6.7.1).
+- CI no GitHub Actions verde (testes + build Debug/Release); Release com `.bin` em tags
+  `v*` escrito, aguardando a primeira release (6.7.1).
 
 **O que NÃO foi verificado na placa** (depende de um join com sucesso): envio de
 uplink, downlink, sleep/wake do Wio-E5, entrada/saída do Stop 2, consumo de corrente.
@@ -143,8 +143,8 @@ Debug na placa pela linha de comando: ver AGENTS.md §4.1. Resumo:
 
 ## 6. Próximos passos (em ordem de prioridade)
 
-A **pipeline de CI/CD (6.7.1)** pedida pelo usuário já foi implementada; falta vê-la rodar
-no GitHub. Ainda sem sensor e sem cadastro no TTN (o usuário está pesquisando), 6.1 e 6.2
+A **pipeline de CI/CD (6.7.1)** está funcionando no GitHub; o Release será validado na
+primeira tag. Ainda sem sensor e sem cadastro no TTN (o usuário está pesquisando), 6.1 e 6.2
 seguem bloqueados.
 
 Sugestão: **6.1 e 6.2 em paralelo** (6.1 depende de hardware/cadastro do usuário; 6.2 é
@@ -214,7 +214,7 @@ host → implementação. A spec deve decidir:
 
 ### 6.7 Engenharia do repositório
 
-#### 6.7.1 Pipeline de CI/CD (GitHub Actions)  ⟵ IMPLEMENTADA, falta a 1ª execução no GitHub
+#### 6.7.1 Pipeline de CI/CD (GitHub Actions)  ⟵ CI FUNCIONANDO; Release aguarda a 1ª tag
 
 Feita na branch `feature/ci-cd` (2026-11-19). Detalhes de uso em AGENTS.md §2.6.
 
@@ -229,20 +229,20 @@ Feita na branch `feature/ci-cd` (2026-11-19). Detalhes de uso em AGENTS.md §2.6
 sem warnings, gera `node.bin` (28,7 KB) e a string de versão aparece no `.bin`; testes do host
 passam. A URL e o SHA-256 do toolchain foram conferidos (download de ~150 MB).
 
-**NÃO verificado ainda:**
-- [ ] **Primeira execução real no GitHub Actions** (precisa de push da branch). Possíveis
-      ajustes: avisos do gcc 13 do Ubuntu que o gcc 16 local não dá; algo apontado pelo ASan/UBSan
-      no preset `host-sanitize`.
-- [ ] Build em sistema de arquivos que diferencia maiúsculas: a checagem estática dos caminhos
-      do CMake não achou problemas, mas o build Linux real só roda no CI. Um script que reproduz
-      o job em WSL sem `sudo` (baixa toolchain/CMake/Ninja/actionlint para `~/ci-tools`) foi
-      escrito, mas a execução foi barrada pelo controle de permissões desta sessão; o WSL
-      (Ubuntu 24.04) desta máquina não tem gcc/cmake e o `sudo` pede senha.
-- [ ] Workflows não passaram por um linter (sem `actionlint`/PyYAML local); revisão manual.
+**Primeira execução no GitHub (2026-11-19):** run
+[44547900239](https://github.com/rafcunha/project_sinos/actions/runs/44547900239) na
+`feature/ci-cd`, **verde de primeira** nos 4 jobs (`host-tests (host)`,
+`host-tests (host-sanitize)`, `firmware-build (Debug)`, `firmware-build (Release)`), ~1,5 min.
+Isso confirma o build Linux (sistema de arquivos que diferencia maiúsculas), o ASan/UBSan e a
+sintaxe do `ci.yml`. Repositório público: os runners do GitHub não consomem minutos pagos.
+Artefatos ficam 90 dias.
+
+**Falta:**
 - [ ] `release.yml` só roda na `main`/tags: validar na primeira release (6.7.2).
-- [ ] Depois do primeiro CI verde: usuário ativa a proteção de `main`/`develop` exigindo os
-      checks `host-tests (host)`, `host-tests (host-sanitize)`, `firmware-build (Debug)` e
-      `firmware-build (Release)`.
+- [ ] Usuário ativar a proteção de `main`/`develop` exigindo os 4 checks acima.
+- [ ] Script para reproduzir o job em WSL sem `sudo` existe só fora do repo; a execução foi
+      barrada pelo controle de permissões (o WSL desta máquina não tem gcc/cmake e o `sudo`
+      pede senha). Como o CI real funciona, não é mais necessário.
 
 **Fora do escopo:** atualização do firmware em campo pelo ar (FOTA). "Deploy" aqui é publicar
 o `.bin` versionado. Se o usuário quiser FOTA, abrir item próprio.
