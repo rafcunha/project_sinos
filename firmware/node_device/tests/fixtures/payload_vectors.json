@@ -1,0 +1,126 @@
+{
+  "_comment": "Uplink payload test vectors (docs/payload/payload_spec.md). Shared by tests/test_payload.c (C codec) and ttn/uplink_formatter.test.js (TTN formatter). 'fields' = raw wire values; 'ttn' = expected decodeUplink() data; 'roundtrip': false when encoding the fields does not give back the same bytes.",
+  "valid": [
+    {
+      "name": "heartbeat_1",
+      "hex": "000001",
+      "fields": { "type": 0, "version": 0, "counter": 1 },
+      "ttn": { "type": "heartbeat", "version": 0, "counter": 1 }
+    },
+    {
+      "name": "heartbeat_max",
+      "hex": "00FFFF",
+      "fields": { "type": 0, "version": 0, "counter": 65535 },
+      "ttn": { "type": "heartbeat", "version": 0, "counter": 65535 }
+    },
+    {
+      "name": "measurement_full",
+      "hex": "010BB80E7400E1000A",
+      "fields": { "type": 1, "version": 0, "distance_mm": 3000, "battery_mv": 3700, "temperature_dc": 225, "flags": 0, "samples": 10 },
+      "ttn": {
+        "type": "measurement", "version": 0, "distance_m": 3, "battery_v": 3.7, "temperature_c": 22.5,
+        "flags": { "sensor_error": false, "unstable": false, "temp_uncompensated": false, "battery_low": false, "first_after_boot": false },
+        "samples": 10
+      }
+    },
+    {
+      "name": "measurement_distance_only",
+      "hex": "010BB8FFFF7FFF040A",
+      "fields": { "type": 1, "version": 0, "distance_mm": 3000, "battery_mv": 65535, "temperature_dc": 32767, "flags": 4, "samples": 10 },
+      "ttn": {
+        "type": "measurement", "version": 0, "distance_m": 3, "battery_v": null, "temperature_c": null,
+        "flags": { "sensor_error": false, "unstable": false, "temp_uncompensated": true, "battery_low": false, "first_after_boot": false },
+        "samples": 10
+      }
+    },
+    {
+      "name": "measurement_no_echo",
+      "hex": "01FFFF0E7400E10100",
+      "fields": { "type": 1, "version": 0, "distance_mm": 65535, "battery_mv": 3700, "temperature_dc": 225, "flags": 1, "samples": 0 },
+      "ttn": {
+        "type": "measurement", "version": 0, "distance_m": null, "battery_v": 3.7, "temperature_c": 22.5,
+        "flags": { "sensor_error": true, "unstable": false, "temp_uncompensated": false, "battery_low": false, "first_after_boot": false },
+        "samples": 0
+      }
+    },
+    {
+      "name": "measurement_negative_temp",
+      "hex": "010BB80E74FF9C000A",
+      "fields": { "type": 1, "version": 0, "distance_mm": 3000, "battery_mv": 3700, "temperature_dc": -100, "flags": 0, "samples": 10 },
+      "ttn": {
+        "type": "measurement", "version": 0, "distance_m": 3, "battery_v": 3.7, "temperature_c": -10,
+        "flags": { "sensor_error": false, "unstable": false, "temp_uncompensated": false, "battery_low": false, "first_after_boot": false },
+        "samples": 10
+      }
+    },
+    {
+      "name": "measurement_low_edges_all_flags",
+      "hex": "0100000000FE701FFE",
+      "fields": { "type": 1, "version": 0, "distance_mm": 0, "battery_mv": 0, "temperature_dc": -400, "flags": 31, "samples": 254 },
+      "ttn": {
+        "type": "measurement", "version": 0, "distance_m": 0, "battery_v": 0, "temperature_c": -40,
+        "flags": { "sensor_error": true, "unstable": true, "temp_uncompensated": true, "battery_low": true, "first_after_boot": true },
+        "samples": 254
+      }
+    },
+    {
+      "name": "measurement_high_edges_samples_unknown",
+      "hex": "01FFFE0E74035210FF",
+      "fields": { "type": 1, "version": 0, "distance_mm": 65534, "battery_mv": 3700, "temperature_dc": 850, "flags": 16, "samples": 255 },
+      "ttn": {
+        "type": "measurement", "version": 0, "distance_m": 65.534, "battery_v": 3.7, "temperature_c": 85,
+        "flags": { "sensor_error": false, "unstable": false, "temp_uncompensated": false, "battery_low": false, "first_after_boot": true },
+        "samples": null
+      }
+    },
+    {
+      "name": "measurement_reserved_flags_ignored",
+      "hex": "010BB80E7400E1E00A",
+      "roundtrip": false,
+      "fields": { "type": 1, "version": 0, "distance_mm": 3000, "battery_mv": 3700, "temperature_dc": 225, "flags": 224, "samples": 10 },
+      "ttn": {
+        "type": "measurement", "version": 0, "distance_m": 3, "battery_v": 3.7, "temperature_c": 22.5,
+        "flags": { "sensor_error": false, "unstable": false, "temp_uncompensated": false, "battery_low": false, "first_after_boot": false },
+        "samples": 10
+      }
+    },
+    {
+      "name": "status_example",
+      "hex": "02000100010018000200",
+      "fields": { "type": 2, "version": 0, "fw_major": 0, "fw_minor": 1, "fw_patch": 0, "reset_cause": 1, "uptime_h": 24, "join_failures": 0, "uplink_failures": 2, "module_resets": 0 },
+      "ttn": { "type": "status", "version": 0, "firmware": "0.1.0", "reset_cause": "power_on", "uptime_h": 24, "join_failures": 0, "uplink_failures": 2, "module_resets": 0 }
+    },
+    {
+      "name": "status_unknown_and_saturated",
+      "hex": "0201020300FFFFFFFFFF",
+      "fields": { "type": 2, "version": 0, "fw_major": 1, "fw_minor": 2, "fw_patch": 3, "reset_cause": 0, "uptime_h": 65535, "join_failures": 255, "uplink_failures": 255, "module_resets": 255 },
+      "ttn": { "type": "status", "version": 0, "firmware": "1.2.3", "reset_cause": "unknown", "uptime_h": null, "join_failures": 255, "uplink_failures": 255, "module_resets": 255 }
+    },
+    {
+      "name": "status_cause_other",
+      "hex": "02FFFFFF070000000000",
+      "fields": { "type": 2, "version": 0, "fw_major": 255, "fw_minor": 255, "fw_patch": 255, "reset_cause": 7, "uptime_h": 0, "join_failures": 0, "uplink_failures": 0, "module_resets": 0 },
+      "ttn": { "type": "status", "version": 0, "firmware": "255.255.255", "reset_cause": "other", "uptime_h": 0, "join_failures": 0, "uplink_failures": 0, "module_resets": 0 }
+    },
+    {
+      "name": "status_cause_out_of_range",
+      "hex": "02000100090018000200",
+      "ttn_warnings": 1,
+      "fields": { "type": 2, "version": 0, "fw_major": 0, "fw_minor": 1, "fw_patch": 0, "reset_cause": 9, "uptime_h": 24, "join_failures": 0, "uplink_failures": 2, "module_resets": 0 },
+      "ttn": { "type": "status", "version": 0, "firmware": "0.1.0", "reset_cause": "unknown", "uptime_h": 24, "join_failures": 0, "uplink_failures": 2, "module_resets": 0 }
+    }
+  ],
+  "invalid": [
+    { "name": "empty", "hex": "", "error": "empty" },
+    { "name": "reserved_type_3", "hex": "0300", "error": "unknown_type" },
+    { "name": "reserved_type_31", "hex": "1F", "error": "unknown_type" },
+    { "name": "reserved_type_with_version", "hex": "2300", "error": "unknown_type" },
+    { "name": "heartbeat_version_1", "hex": "200001", "error": "unknown_version" },
+    { "name": "measurement_version_7", "hex": "E10BB80E7400E1000A", "error": "unknown_version" },
+    { "name": "heartbeat_short", "hex": "0000", "error": "bad_length" },
+    { "name": "measurement_short", "hex": "010BB8", "error": "bad_length" },
+    { "name": "measurement_long", "hex": "010BB80E7400E1000A00", "error": "bad_length" },
+    { "name": "status_short", "hex": "020001000100180002", "error": "bad_length" },
+    { "name": "status_long", "hex": "0200010001001800020000", "error": "bad_length" }
+  ]
+}
