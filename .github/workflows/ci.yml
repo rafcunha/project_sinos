@@ -1,4 +1,4 @@
-# CI: host unit tests + firmware build for every push / pull request.
+# CI: host unit tests + TTN formatter tests + firmware build for every push / pull request.
 # Also reused by release.yml (workflow_call) to build the release images.
 name: CI
 
@@ -66,6 +66,22 @@ jobs:
           name: test-report-${{ matrix.preset }}
           path: firmware/node_device/tests/build/${{ matrix.preset }}/junit.xml
           if-no-files-found: warn
+
+  ttn-formatter:
+    name: ttn-formatter
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: firmware/node_device
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test TTN uplink formatter
+        run: node --test ttn/uplink_formatter.test.js
 
   firmware-build:
     name: firmware-build (${{ matrix.config }})

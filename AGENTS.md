@@ -35,8 +35,10 @@ project_sinos/
 │   │   ├── node/               projeto STM32CubeMX (CMake, gcc-arm-none-eabi)
 │   │   │   ├── Core/           código gerado pelo CubeMX (+ trechos USER CODE)
 │   │   │   ├── Drivers/        HAL/CMSIS da ST — NÃO editar
-│   │   │   └── Lib/            bibliotecas do projeto (ex.: Lib/wioe5)
+│   │   │   ├── App/            aplicação (ciclo LoRaWAN, escolha do payload, cola STM32)
+│   │   │   └── Lib/            bibliotecas do projeto (Lib/wioe5, Lib/node_payload)
 │   │   ├── tests/              testes no host (Unity + CMake)
+│   │   ├── ttn/                payload formatter do TTN (JavaScript) + testes
 │   │   └── docs/               especificações e planos de teste
 │   └── gateway/                firmware do gateway
 ├── AGENTS.md                   regras do repositório (este arquivo)
@@ -152,7 +154,7 @@ usuário, pela web. Para o agente fazer isso: `winget install --id GitHub.cli -e
 
 | Workflow | Dispara em | O que faz |
 |----------|------------|-----------|
-| `.github/workflows/ci.yml` | push em `develop`, `feature/**`, `release/**`, `hotfix/**`; PR para `develop`/`main`; manual | testes do host (`host` e `host-sanitize`) + firmware Debug e Release com `-DNODE_WERROR=ON`; publica `node.elf/.bin/.hex/.map` como artefatos |
+| `.github/workflows/ci.yml` | push em `develop`, `feature/**`, `release/**`, `hotfix/**`; PR para `develop`/`main`; manual | testes do host (`host` e `host-sanitize`) + testes do formatter do TTN (`ttn-formatter`, Node 22) + firmware Debug e Release com `-DNODE_WERROR=ON`; publica `node.elf/.bin/.hex/.map` como artefatos |
 | `.github/workflows/release.yml` | push em `main`; tag `v*`; manual | roda o CI com a versão gravada no firmware, empacota `node-<versão>-<sha>.{bin,hex,elf,map}` + `SHA256SUMS.txt`; **em tag `v*` cria o GitHub Release** |
 
 - O **deploy** é o push da tag: depois do merge do PR `release/x.y.z` → `main`,
@@ -169,7 +171,7 @@ Configurada pelo usuário em *Settings → Rules → Rulesets*:
 
 | Ruleset   | Alvo      | Regras |
 |-----------|-----------|--------|
-| `main`    | branch padrão (`main`) | bloquear exclusão e force push; **exigir pull request** (0 aprovações, porque o projeto tem um único desenvolvedor); **exigir os checks** `host-tests (host)`, `host-tests (host-sanitize)`, `firmware-build (Debug)`, `firmware-build (Release)`; sem histórico linear (o git flow usa merge commits) |
+| `main`    | branch padrão (`main`) | bloquear exclusão e force push; **exigir pull request** (0 aprovações, porque o projeto tem um único desenvolvedor); **exigir os checks** `host-tests (host)`, `host-tests (host-sanitize)`, `firmware-build (Debug)`, `firmware-build (Release)` (o `ttn-formatter`, criado depois, ainda **não** é exigido; o usuário pode acrescentá-lo); sem histórico linear (o git flow usa merge commits) |
 | `develop` | `develop` | bloquear exclusão e force push |
 
 As duas também têm *Restrict creations*, o que só impede recriar essas branches se forem
@@ -206,6 +208,7 @@ precisa ser trocado também, senão nenhum PR consegue ser mergeado.
 |------------------|-------------------------------|----------------------------------------------------------------|
 | Firmware (ARM)   | `firmware/node_device/node`   | `cmake --preset Debug` e `cmake --build --preset Debug`        |
 | Testes do host   | `firmware/node_device/tests`  | `cmake --preset host` e `cmake --build --preset host` e `ctest --preset host` |
+| Formatter do TTN | `firmware/node_device`        | `node --test ttn/uplink_formatter.test.js` (Node ≥ 18)          |
 
 Ferramentas: `arm-none-eabi-gcc` (STM32CubeCLT ou o do STM32CubeIDE), CMake ≥ 3.22, Ninja,
 e um gcc do host para os testes (no Windows: `winget install --id BrechtSanders.WinLibs.POSIX.UCRT -e`).

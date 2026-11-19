@@ -1,7 +1,7 @@
 /**
  * @file app_node.c
- * @brief STM32 glue for the node: driver instance, HAL callbacks, payload and
- *        idle policy.
+ * @brief STM32 glue for the node: driver instance, HAL callbacks, uplink payload
+ *        (app_payload, docs/payload/payload_spec.md) and idle policy.
  *
  * Low power (driver spec 10.7 and 18): when the cycle only waits, the Wio-E5
  * sleeps (wioe5_can_stop()) and the wait is at least STOP2_MIN_IDLE_MS, the MCU
@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "app_lorawan.h"
+#include "app_payload.h"
 #include "main.h"
 #include "wioe5.h"
 #include "wioe5_port_stm32.h"
@@ -45,7 +46,7 @@ const char g_fw_ident[] = "project_sinos node " FW_VERSION "+" FW_GIT_SHA;
 static wioe5_t       s_wio;
 static wioe5_stm32_t s_wio_hw;
 static app_lorawan_t s_app;
-static uint16_t      s_heartbeat;
+static app_payload_t s_payload;
 
 /* ---- Driver callbacks ---------------------------------------------------- */
 
@@ -63,24 +64,6 @@ static uint32_t clock_ms(void *ctx)
 {
     (void)ctx;
     return HAL_GetTick();
-}
-
-/**
- * Payload until the ultrasonic sensor driver exists: a 3-byte heartbeat
- * [0x00 = heartbeat type][counter MSB][counter LSB]. It proves the link end to
- * end without inventing a river level.
- */
-static size_t heartbeat_payload(void *user, uint8_t *buf, size_t cap)
-{
-    (void)user;
-    if (cap < 3u) {
-        return 0u;
-    }
-    s_heartbeat++;
-    buf[0] = 0x00u;
-    buf[1] = (uint8_t)(s_heartbeat >> 8);
-    buf[2] = (uint8_t)(s_heartbeat & 0xFFu);
-    return 3u;
 }
 
 /* ---- HAL callbacks (USART1 is the only UART in use) ----------------------- */
@@ -177,8 +160,13 @@ void app_node_init(UART_HandleTypeDef *huart)
         Error_Handler();
     }
 
+    /* Until the sensor driver exists: status at boot and every 24 h, heartbeat
+     * otherwise. reset_cause is read from RCC with the watchdog work (6.5). */
+    app_payload_init(&s_payload, FW_VERSION, NODE_PAYLOAD_RESET_UNKNOWN, &s_app, HAL_GetTick());
+
     app_lorawan_default_cfg(&app_cfg);
-    app_lorawan_init(&s_app, &s_wio, &app_cfg, clock_ms, NULL, heartbeat_payload, NULL);
+    app_cfg.fport = NODE_PAYLOAD_FPORT;
+    app_lorawan_init(&s_app, &s_wio, &app_cfg, clock_ms, NULL, app_payload_build, &s_payload);
 
     if (wioe5_port_stm32_start(&s_wio_hw) != HAL_OK) {
         Error_Handler();
@@ -187,6 +175,7 @@ void app_node_init(UART_HandleTypeDef *huart)
 
 void app_node_process(void)
 {
+    app_payload_tick(&s_payload, HAL_GetTick()); /* 64-bit uptime for the status message */
     app_lorawan_process(&s_app);
     if (app_lorawan_can_idle(&s_app)) {
         idle_mcu();
