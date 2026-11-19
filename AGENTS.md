@@ -95,7 +95,8 @@ git branch -d feature/<escopo>-<descricao>
 ### 2.4 Checklist antes de mergear em `develop` (Definition of Done)
 
 - [ ] Firmware compila sem warnings (`cmake --preset Debug && cmake --build --preset Debug`
-      em `firmware/node_device/node`).
+      em `firmware/node_device/node`; o CI usa `-DNODE_WERROR=ON`).
+- [ ] CI verde na branch, se ela já foi enviada ao GitHub (§2.6).
 - [ ] Testes do host passam (`firmware/node_device/tests`, ver §4).
 - [ ] Código novo tem testes; bug corrigido tem teste que falhava antes.
 - [ ] Documentação em `docs/` atualizada se a interface ou o comportamento mudou.
@@ -123,6 +124,21 @@ git branch -d hotfix/1.2.1
 ```
 
 Versionamento: SemVer (`MAJOR.MINOR.PATCH`), tags `vX.Y.Z` só em `main`.
+
+### 2.6 CI/CD (GitHub Actions)
+
+| Workflow | Dispara em | O que faz |
+|----------|------------|-----------|
+| `.github/workflows/ci.yml` | push em `develop`, `feature/**`, `release/**`, `hotfix/**`; PR para `develop`/`main`; manual | testes do host (`host` e `host-sanitize`) + firmware Debug e Release com `-DNODE_WERROR=ON`; publica `node.elf/.bin/.hex/.map` como artefatos |
+| `.github/workflows/release.yml` | push em `main`; tag `v*`; manual | roda o CI com a versão gravada no firmware, empacota `node-<versão>-<sha>.{bin,hex,elf,map}` + `SHA256SUMS.txt`; **em tag `v*` cria o GitHub Release** |
+
+- O **deploy** é o push da tag: depois do merge `release/x.y.z` → `main` e da tag
+  `vX.Y.Z` (§2.5), `git push origin main --tags` (com autorização do usuário) gera o Release
+  com o `.bin`. Tag com hífen (`v1.0.0-rc1`) vira *pre-release*.
+- O toolchain ARM do CI é o oficial da Arm **14.3.rel1**, com SHA-256 fixado no `ci.yml`.
+  Se mudar a versão no STM32Cube (`node/.settings/bundles-lock.store.json`), atualize
+  `ARM_TOOLCHAIN_VERSION` e `ARM_TOOLCHAIN_SHA256` juntos.
+- Um CI vermelho bloqueia o merge: corrija na própria branch.
 
 ## 3. Commits
 

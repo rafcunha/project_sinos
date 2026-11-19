@@ -2,7 +2,7 @@
 
 > Documento para o próximo agente (ou pessoa) continuar o trabalho. Leia junto com
 > [AGENTS.md](AGENTS.md), que define as regras de git flow, commits e código.
-> Atualizado em 2026-11-17, em `develop` (commit de merge mais recente no GitHub: `origin/develop`).
+> Atualizado em 2026-11-19, em `develop` (commit de merge mais recente no GitHub: `origin/develop`).
 
 ---
 
@@ -31,6 +31,8 @@ ultrassônico. Hardware do nó:
   injetados, todos detectados).
 - Firmware Debug e Release compilam sem warnings (Release: ~28,7 KB flash, ~4,3 KB RAM).
 - Debug pelo VS Code (extensão STM32Cube) configurado; trace da UART em builds Debug.
+- CI/CD no GitHub Actions escrito (testes + build + Release com `.bin`), aguardando a
+  primeira execução no GitHub (6.7.1).
 
 **O que NÃO foi verificado na placa** (depende de um join com sucesso): envio de
 uplink, downlink, sleep/wake do Wio-E5, entrada/saída do Stop 2, consumo de corrente.
@@ -141,8 +143,9 @@ Debug na placa pela linha de comando: ver AGENTS.md §4.1. Resumo:
 
 ## 6. Próximos passos (em ordem de prioridade)
 
-O usuário pediu também a **pipeline de CI/CD (6.7.1)**: ela não depende de hardware e pode
-ser feita a qualquer momento, de preferência antes da primeira release.
+A **pipeline de CI/CD (6.7.1)** pedida pelo usuário já foi implementada; falta vê-la rodar
+no GitHub. Ainda sem sensor e sem cadastro no TTN (o usuário está pesquisando), 6.1 e 6.2
+seguem bloqueados.
 
 Sugestão: **6.1 e 6.2 em paralelo** (6.1 depende de hardware/cadastro do usuário; 6.2 é
 firmware). **6.5 (watchdog)** antes de qualquer teste longo em campo.
@@ -211,60 +214,38 @@ host → implementação. A spec deve decidir:
 
 ### 6.7 Engenharia do repositório
 
-#### 6.7.1 Pipeline de CI/CD (GitHub Actions)  ⟵ pedido do usuário
+#### 6.7.1 Pipeline de CI/CD (GitHub Actions)  ⟵ IMPLEMENTADA, falta a 1ª execução no GitHub
 
-Objetivo: **testar todo push/PR** e, na `main`, **gerar e publicar o `.bin` do firmware**.
-Arquivos em `.github/workflows/`. Siga o git flow: branch `feature/ci-cd`.
+Feita na branch `feature/ci-cd` (2026-11-19). Detalhes de uso em AGENTS.md §2.6.
 
-**Workflow `ci.yml`** — dispara em `push` e `pull_request` para `develop`, `main`,
-`feature/**`, `release/**` e `hotfix/**`:
+| Arquivo | Conteúdo |
+|---------|----------|
+| `.github/workflows/ci.yml` | jobs `host-tests` (presets `host` e `host-sanitize`, relatório JUnit) e `firmware-build` (Debug + Release, `-DNODE_WERROR=ON`, artefatos `.elf/.bin/.hex/.map`). Toolchain oficial Arm **14.3.rel1** baixado de developer.arm.com com **SHA-256 fixado** e em cache |
+| `.github/workflows/release.yml` | em push na `main` e tags `v*`: calcula a versão (`git describe`), reusa o `ci.yml` com `fw-version`, empacota `node-<versão>-<sha7>.{bin,hex,elf,map}` + `SHA256SUMS.txt`; em tag cria o **GitHub Release** (`gh release create --generate-notes`, `-rc` vira pre-release). `contents: write` só no job `publish` |
+| `node/CMakeLists.txt` | `node.bin`/`node.hex` + relatório de tamanho em todo build (POST_BUILD); opção `NODE_WERROR`; `FW_VERSION` (cache, padrão `0.0.0-dev`) e `FW_GIT_SHA` (lido no configure) |
+| `node/App/app_node.c` | `g_fw_ident = "project_sinos node <versão>+<sha>"`, mantido na imagem por `-Wl,--undefined=g_fw_ident`; ver com `strings node.bin` ou no debugger |
 
-- [ ] Job **host-tests** (`ubuntu-latest`): instalar `cmake`, `ninja-build` e `gcc`; em
-      `firmware/node_device/tests`, rodar `cmake --preset host-sanitize`,
-      `cmake --build --preset host-sanitize` e `ctest --preset host-sanitize` (ASan/UBSan).
-      Rodar também o preset `host`. Publicar o relatório do `ctest` como artefato.
-- [ ] Job **firmware-build** (`ubuntu-latest`), matriz `Debug` + `Release`: instalar o
-      `arm-none-eabi-gcc` **14.3** (mesma versão travada em `node/.settings/bundles-lock.store.json`;
-      ex.: action `carlosperate/arm-none-eabi-gcc-action` com `release: '14.3.Rel1'`, ou o
-      tarball oficial da Arm), mais `cmake` e `ninja`. Em `firmware/node_device/node`:
-      `cmake --preset <cfg>` e `cmake --build --preset <cfg>`. O build deve falhar com warning:
-      passar `-Werror` no CI, por exemplo via `CMAKE_C_FLAGS`, sem mudar o build local.
-- [ ] Gerar `node.bin` e `node.hex` com `arm-none-eabi-objcopy -O binary|ihex` e imprimir o
-      tamanho com `arm-none-eabi-size`. Melhor: adicionar um `add_custom_command(POST_BUILD)`
-      no `node/CMakeLists.txt` para gerar `.bin`/`.hex` também no build local.
-- [ ] Publicar `node.elf`, `node.bin`, `node.hex` e `node.map` como artefatos do workflow
-      (`actions/upload-artifact`).
-- [ ] Cache das ferramentas (`actions/cache`) para não baixar o toolchain a cada execução.
+**Verificado localmente (Windows):** Release com `-DNODE_WERROR=ON` e versão de teste compila
+sem warnings, gera `node.bin` (28,7 KB) e a string de versão aparece no `.bin`; testes do host
+passam. A URL e o SHA-256 do toolchain foram conferidos (download de ~150 MB).
 
-**Workflow `release.yml`** (o "deploy") — dispara em `push` na `main` (merge de
-`release/*` ou `hotfix/*`) e em tags `v*`:
+**NÃO verificado ainda:**
+- [ ] **Primeira execução real no GitHub Actions** (precisa de push da branch). Possíveis
+      ajustes: avisos do gcc 13 do Ubuntu que o gcc 16 local não dá; algo apontado pelo ASan/UBSan
+      no preset `host-sanitize`.
+- [ ] Build em sistema de arquivos que diferencia maiúsculas: a checagem estática dos caminhos
+      do CMake não achou problemas, mas o build Linux real só roda no CI. Um script que reproduz
+      o job em WSL sem `sudo` (baixa toolchain/CMake/Ninja/actionlint para `~/ci-tools`) foi
+      escrito, mas a execução foi barrada pelo controle de permissões desta sessão; o WSL
+      (Ubuntu 24.04) desta máquina não tem gcc/cmake e o `sudo` pede senha.
+- [ ] Workflows não passaram por um linter (sem `actionlint`/PyYAML local); revisão manual.
+- [ ] `release.yml` só roda na `main`/tags: validar na primeira release (6.7.2).
+- [ ] Depois do primeiro CI verde: usuário ativa a proteção de `main`/`develop` exigindo os
+      checks `host-tests (host)`, `host-tests (host-sanitize)`, `firmware-build (Debug)` e
+      `firmware-build (Release)`.
 
-- [ ] Reaproveitar os jobs acima (workflow reutilizável com `workflow_call`) e só seguir se
-      tudo passar.
-- [ ] Build **Release**. Nome do binário com versão e commit, ex.:
-      `node-v0.1.0-<sha7>.bin`, mais `.hex`, `.elf` e `SHA256SUMS.txt`.
-- [ ] Gravar a versão no firmware: passar `-DFW_VERSION="v0.1.0"` e `-DFW_GIT_SHA=...` pelo
-      CMake (ex.: lidos de `git describe --tags`), para o firmware conseguir reportá-la
-      (útil no payload de status do passo 6.3).
-- [ ] Criar um **GitHub Release** para a tag com os artefatos anexados (ex.:
-      `softprops/action-gh-release`, ou `gh release create` no runner). Notas da release
-      geradas a partir dos commits (Conventional Commits).
-- [ ] Permissões mínimas no workflow: `contents: write` só no job que publica a release.
-
-**Cuidados conhecidos:**
-- O build roda em Linux: confira se nos `#include` maiúsculas/minúsculas batem com os nomes
-  dos arquivos (o Windows não diferencia, o Linux sim).
-- O toolchain file `cmake/gcc-arm-none-eabi.cmake` espera `arm-none-eabi-gcc` no PATH.
-- `gh` não está instalado nesta máquina; para acompanhar o CI daqui, instale (`winget install GitHub.cli`)
-  ou use a aba Actions do repositório.
-- Depois que o CI estiver verde, pedir ao usuário para ativar a proteção de `main`/`develop`
-  exigindo os checks `host-tests` e `firmware-build`.
-- "Deploy" aqui é **publicar o `.bin` versionado**. Gravar na placa em campo (FOTA) não existe:
-  o Wio-E5/LoRaWAN não comporta atualização de firmware do STM32 pelo ar sem um projeto
-  próprio. Se o usuário quiser, abrir como item separado.
-
-**Pronto quando:** um PR para `develop` mostra os checks de teste e de build; um merge na
-`main` com tag `vX.Y.Z` gera um GitHub Release com o `.bin` e os checksums.
+**Fora do escopo:** atualização do firmware em campo pelo ar (FOTA). "Deploy" aqui é publicar
+o `.bin` versionado. Se o usuário quiser FOTA, abrir item próprio.
 
 #### 6.7.2 Outros itens
 - [ ] Primeira release pelo git flow: `release/0.1.0` → `main` + tag `v0.1.0` → volta para `develop`.
