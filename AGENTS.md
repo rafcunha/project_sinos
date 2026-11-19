@@ -63,7 +63,9 @@ project_sinos/
 3. **Nunca** pular hooks (`--no-verify`) nem desabilitar assinatura de commits.
 4. **Push e criação de PR só com autorização explícita do usuário** na conversa atual.
    Merge local em `develop` é permitido quando o checklist da §2.4 estiver completo.
-5. Merge em `main` só via `release/*` ou `hotfix/*`, e só quando o usuário pedir.
+5. `main` só recebe código por **pull request** de `release/*` ou `hotfix/*`, com o CI verde,
+   e só quando o usuário pedir. Nunca faça merge local em `main` nem push direto nela: a
+   proteção do GitHub recusa (§2.7).
 
 ### 2.2 Nome de branch
 
@@ -105,25 +107,46 @@ git branch -d feature/<escopo>-<descricao>
 - [ ] O usuário revisou e aprovou o resultado (para mudanças de especificação ou de API).
 - [ ] `HANDOFF.md` atualizado com o que mudou (seção 0).
 
-### 2.5 Release e hotfix
+### 2.5 Release e hotfix (PR para `main`)
+
+A `main` é protegida: o código só entra por pull request, depois que os 4 checks do CI
+passam. Cada passo que envia algo ao GitHub (push, PR, merge do PR, tag) precisa de
+autorização do usuário.
+
+**Release**
 
 ```bash
-# release
-git switch -c release/1.2.0 develop
-# só correções, versão, changelog
-git switch main    && git merge --no-ff release/1.2.0 && git tag -a v1.2.0 -m "v1.2.0"
-git switch develop && git merge --no-ff release/1.2.0
-git branch -d release/1.2.0
+# 1. preparar a release a partir do develop
+git switch develop && git pull --ff-only
+git switch -c release/1.2.0
+# só correções de estabilização, versão, changelog; commits normais
+git push -u origin release/1.2.0          # o CI roda na branch
 
-# hotfix
-git switch -c hotfix/1.2.1 main
-# correção + teste
-git switch main    && git merge --no-ff hotfix/1.2.1 && git tag -a v1.2.1 -m "v1.2.1"
-git switch develop && git merge --no-ff hotfix/1.2.1
-git branch -d hotfix/1.2.1
+# 2. abrir o PR release/1.2.0 -> main
+#    - pela web: https://github.com/rafcunha/project_sinos/compare/main...release/1.2.0
+#    - ou: gh pr create --base main --head release/1.2.0 --title "Release v1.2.0"
+#    O usuário faz o merge pelo GitHub com "Create a merge commit" (não squash nem rebase).
+
+# 3. depois do merge: tag na main (dispara o GitHub Release com o .bin, §2.6)
+git switch main && git pull --ff-only
+git tag -a v1.2.0 -m "v1.2.0"
+git push origin v1.2.0
+
+# 4. levar a release de volta para o develop (merge local, permitido)
+git switch develop && git merge --no-ff release/1.2.0 -m "Merge branch 'release/1.2.0' into develop"
+git push origin develop
+git branch -d release/1.2.0 && git push origin --delete release/1.2.0
 ```
 
-Versionamento: SemVer (`MAJOR.MINOR.PATCH`), tags `vX.Y.Z` só em `main`.
+**Hotfix:** igual, com `hotfix/1.2.1` criada a partir da `main`
+(`git switch main && git pull --ff-only && git switch -c hotfix/1.2.1`), PR `hotfix/1.2.1` → `main`,
+tag `v1.2.1` na `main` e merge `--no-ff` de volta no `develop`.
+
+Versionamento: SemVer (`MAJOR.MINOR.PATCH`), tags `vX.Y.Z` só em `main`. Tag com hífen
+(`v1.2.0-rc1`) gera *pre-release*.
+
+O `gh` (GitHub CLI) não está instalado nesta máquina. Sem ele, quem abre e mergeia o PR é o
+usuário, pela web. Para o agente fazer isso: `winget install --id GitHub.cli -e` e `gh auth login`.
 
 ### 2.6 CI/CD (GitHub Actions)
 
@@ -132,13 +155,30 @@ Versionamento: SemVer (`MAJOR.MINOR.PATCH`), tags `vX.Y.Z` só em `main`.
 | `.github/workflows/ci.yml` | push em `develop`, `feature/**`, `release/**`, `hotfix/**`; PR para `develop`/`main`; manual | testes do host (`host` e `host-sanitize`) + firmware Debug e Release com `-DNODE_WERROR=ON`; publica `node.elf/.bin/.hex/.map` como artefatos |
 | `.github/workflows/release.yml` | push em `main`; tag `v*`; manual | roda o CI com a versão gravada no firmware, empacota `node-<versão>-<sha>.{bin,hex,elf,map}` + `SHA256SUMS.txt`; **em tag `v*` cria o GitHub Release** |
 
-- O **deploy** é o push da tag: depois do merge `release/x.y.z` → `main` e da tag
-  `vX.Y.Z` (§2.5), `git push origin main --tags` (com autorização do usuário) gera o Release
-  com o `.bin`. Tag com hífen (`v1.0.0-rc1`) vira *pre-release*.
+- O **deploy** é o push da tag: depois do merge do PR `release/x.y.z` → `main`,
+  `git push origin vX.Y.Z` (com autorização do usuário) gera o Release com o `.bin` (§2.5).
+  Tag com hífen (`v1.0.0-rc1`) vira *pre-release*.
 - O toolchain ARM do CI é o oficial da Arm **14.3.rel1**, com SHA-256 fixado no `ci.yml`.
   Se mudar a versão no STM32Cube (`node/.settings/bundles-lock.store.json`), atualize
   `ARM_TOOLCHAIN_VERSION` e `ARM_TOOLCHAIN_SHA256` juntos.
 - Um CI vermelho bloqueia o merge: corrija na própria branch.
+
+### 2.7 Proteção de branches no GitHub (rulesets)
+
+Configurada pelo usuário em *Settings → Rules → Rulesets*:
+
+| Ruleset   | Alvo      | Regras |
+|-----------|-----------|--------|
+| `main`    | branch padrão (`main`) | bloquear exclusão e force push; **exigir pull request** (0 aprovações, porque o projeto tem um único desenvolvedor); **exigir os checks** `host-tests (host)`, `host-tests (host-sanitize)`, `firmware-build (Debug)`, `firmware-build (Release)`; sem histórico linear (o git flow usa merge commits) |
+| `develop` | `develop` | bloquear exclusão e force push |
+
+O `develop` **não** exige checks de propósito: os merges de feature são locais (§2.3), e um
+commit de merge recém-criado ainda não tem CI, então o push seria recusado. O CI roda logo
+depois do push. Se ele ficar vermelho no `develop`, a correção é a próxima prioridade, numa
+`feature/fix-*`.
+
+Se um nome de job mudar no `ci.yml`, avise o usuário: o check exigido na ruleset da `main`
+precisa ser trocado também, senão nenhum PR consegue ser mergeado.
 
 ## 3. Commits
 

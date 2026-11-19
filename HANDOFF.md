@@ -122,7 +122,11 @@ Debug na placa pela linha de comando: ver AGENTS.md §4.1. Resumo:
 8. **`.gitignore` e subpastas:** uma regra com barra no meio (`.vscode/*`) só vale para a raiz
    do repositório. Para valer em `node/.vscode`, use `**/.vscode/*`. A extensão ST também
    cria `node/.gitignore` com `!.settings`, que libera a pasta `.settings/` só naquele projeto.
-9. Arquivos gerados pelo CubeMX são CRLF (`.gitattributes` mantém `*.ioc` CRLF); os nossos
+9. **A `main` só aceita PR** (ruleset do GitHub, AGENTS.md §2.7): merge local + push na `main`
+   é recusado. O `develop` não exige checks porque os merges de feature são locais e o
+   commit de merge ainda não teria CI. Se renomear um job do `ci.yml`, a ruleset da `main`
+   precisa ser atualizada, senão nenhum PR consegue ser mergeado.
+10. Arquivos gerados pelo CubeMX são CRLF (`.gitattributes` mantém `*.ioc` CRLF); os nossos
    são LF no repo. Avisos "LF will be replaced by CRLF" são normais.
 
 ---
@@ -134,6 +138,8 @@ Debug na placa pela linha de comando: ver AGENTS.md §4.1. Resumo:
 - Chaves (AppEUI/AppKey) **não** ficam no firmware nem no repo: gravadas uma vez no módulo
   pelo terminal (`provision = NULL`).
 - Política de retentativa na aplicação (`app_lorawan`), não no driver.
+- Git flow com `main` protegida: releases e hotfixes entram por **pull request** (merge commit),
+  features entram no `develop` por merge local `--no-ff` (AGENTS.md §2.5 e §2.7).
 - MCU em **Stop 2** entre medições (RAM mantida; setup/join só no cold boot).
 - MCU segura o Wio-E5 em reset desde o boot; o `setup` libera (PA0 open-drain).
 - Testes do host escritos antes da implementação; mudanças de contrato atualizam spec + testes juntos.
@@ -239,7 +245,9 @@ Artefatos ficam 90 dias.
 
 **Falta:**
 - [ ] `release.yml` só roda na `main`/tags: validar na primeira release (6.7.2).
-- [ ] Usuário ativar a proteção de `main`/`develop` exigindo os 4 checks acima.
+- [ ] Proteção de branches: a configuração recomendada está em AGENTS.md §2.7 (passo a passo
+      dado ao usuário em 2026-11-19). **Confirmar com o usuário se ele já aplicou** as rulesets
+      `main` e `develop` no GitHub.
 - [ ] Script para reproduzir o job em WSL sem `sudo` existe só fora do repo; a execução foi
       barrada pelo controle de permissões (o WSL desta máquina não tem gcc/cmake e o `sudo`
       pede senha). Como o CI real funciona, não é mais necessário.
@@ -248,9 +256,12 @@ Artefatos ficam 90 dias.
 o `.bin` versionado. Se o usuário quiser FOTA, abrir item próprio.
 
 #### 6.7.2 Outros itens
-- [ ] Primeira release pelo git flow: `release/0.1.0` → `main` + tag `v0.1.0` → volta para `develop`.
-      Só com pedido do usuário.
-- [ ] Proteção de `main`/`develop` no GitHub (feito pelo usuário nas configurações do repo).
+- [ ] Primeira release pelo git flow com **PR para a `main`** (AGENTS.md §2.5):
+      `release/0.1.0` → push → PR para `main` (o usuário mergeia pela web, com *merge commit*)
+      → tag `v0.1.0` → push da tag (valida o `release.yml` e gera o Release com o `.bin`)
+      → merge de volta no `develop`. Só com pedido do usuário.
+- [ ] Opcional: instalar o `gh` (`winget install --id GitHub.cli -e` + `gh auth login`) para o
+      agente abrir PRs e acompanhar o CI sem o script da API.
 - [ ] Opcional: `app_node.c` tem a lógica de Stop 2 sem teste no host; considerar extrair o
       cálculo (segundos de wakeup, compensação do tick) para uma função pura testável.
 
