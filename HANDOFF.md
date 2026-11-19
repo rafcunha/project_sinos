@@ -200,15 +200,25 @@ host → implementação. A spec deve decidir:
 - [ ] Integrar trocando a função de payload em `App/app_node.c` (`heartbeat_payload` →
       payload de nível; ver 6.3).
 
-### 6.3 Formato do payload e decodificador
-- [ ] Definir formato versionado ≤ 11 bytes. Proposta inicial: `[tipo/versão][nível mm u16]
-      [bateria mV u16][temperatura dC i16][flags u8]`. Tipo `0x00` já é o heartbeat atual
-      (`[0x00][contador u16]`).
-- [ ] Documentar em `docs/` e escrever o decodificador do servidor (TTN *payload formatter* em JS).
-- [ ] Teste do codificador no host.
+### 6.3 Formato do payload e decodificador  ⟵ EM ANDAMENTO (2026-11-19)
+Branch `feature/payload-format`. Especificação escrita e **aguardando aprovação do usuário**:
+[`firmware/node_device/docs/payload/payload_spec.md`](firmware/node_device/docs/payload/payload_spec.md)
+(questões Q1–Q5 no fim do documento).
+- [x] Definir formato versionado ≤ 11 bytes: cabeçalho `[versão:3][tipo:5]`, tipos `heartbeat` (0,
+      3 B, compatível com o atual), `measurement` (1, 9 B), `status` (2, 10 B), big-endian, sentinelas
+      para "desconhecido", tudo na `fport = 1`.
+- [ ] Depois da aprovação: vetores de teste em `tests/fixtures/payload_vectors.json` (compartilhados
+      entre C e JS), codificador/decodificador C em `node/Lib/node_payload/`, `tests/test_payload.c`,
+      formatter do TTN em `firmware/node_device/ttn/uplink_formatter.js` com testes `node --test`,
+      job `ttn-formatter` no CI, heartbeat do `app_node.c` usando o codificador.
 
 ### 6.4 Energia e autonomia
-- [ ] Medição de corrente por fase (Stop 2, medida, TX/RX) — depende de 6.1.
+- [ ] Medição de corrente por fase (Stop 2, medida, TX/RX). **Hoje não é possível**: o usuário
+      não tem como colocar um amperímetro em série com a alimentação da placa (2026-11-19). O teste
+      de bancada de baixo consumo foi desenhado (ciclo de fases com o módulo acordado/dormindo e o
+      MCU em run/Sleep/Stop 2, contadores na RAM, duas rodadas com e sem debugger) mas **não
+      implementado**. A parte funcional dele (validar Stop 2/wake na placa sem rede) continua
+      útil e pode ser retomada.
 - [ ] Tensão da bateria (ADC do STM32 ou `AT+VDD`) no payload.
 - [ ] Questão Q9 (spec §15): reduzir SYSCLK (hoje 160 MHz) nas fases ativas.
 - [ ] Dimensionar bateria/solar com os números medidos.
