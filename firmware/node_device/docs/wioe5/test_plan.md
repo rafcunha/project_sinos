@@ -306,7 +306,12 @@ não precisam de gateway.
 | `test_op_send.c`   | 23      | TC-TX-01..20                                                    |
 | `test_op_power.c`  | 19      | TC-PW-01..16                                                    |
 | `test_app_lorawan.c` | 8     | APP-01..08: ciclo completo, backoff de join, `No band`, re-join, reset por `UNRESPONSIVE`, tempo ocioso para o Stop 2 (spec §18) |
-| **Total**          | **157** |                                                                 |
+| `test_payload.c`   | 10      | TC-PL-01..10: codec do payload contra os vetores compartilhados (`fixtures/payload_vectors.json`), ida e volta, inválidos, buffer pequeno, sentinelas, saturação, versão do firmware (payload spec) |
+| `test_app_payload.c` | 6     | TC-AP-01..06: `status` no boot e a cada 24 h, heartbeats entre eles, sem rajada após longo silêncio, *uptime* atravessando a volta do tick, buffer pequeno |
+| **Total**          | **173** |                                                                 |
+
+Além desses, `firmware/node_device/ttn/uplink_formatter.test.js` (28 testes, `node --test`)
+roda o *payload formatter* do TTN contra os mesmos vetores.
 
 Os IDs com sufixo (`b`, `c`) e os números além das tabelas acima são casos acrescentados
 durante a escrita. Cada função de teste tem o ID no comentário acima dela.
@@ -318,6 +323,9 @@ Histórico:
    erro de 1, sem tempo de guarda, sem `NO_ACK`, AppKey no log, etc.). 22 foram pegos de
    primeira. Os 2 que passaram (limite de linha com erro de 1 e evento `UNRESPONSIVE`
    repetido) motivaram o TC-LN-10b e a extensão do TC-EN-04. Agora os 24 são detectados.
+4. **Payload (2026-11-19):** 15 defeitos injetados em `node_payload.c` e `app_payload.c`
+   (ordem de bytes, máscara de flags, limites de saturação, checagem de versão e tamanho,
+   agendamento do `status`, *uptime*); todos detectados.
 
 Comandos (em `firmware/node_device/tests`):
 
@@ -327,7 +335,7 @@ cmake --build --preset host
 ctest --preset host
 ```
 
-O CI (GitHub Actions) fica para quando o repositório for enviado ao GitHub.
+O CI (GitHub Actions, AGENTS.md §2.6) roda tudo isso a cada push.
 
 ## 5. Critérios de saída
 

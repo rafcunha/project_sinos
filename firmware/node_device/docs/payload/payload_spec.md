@@ -4,7 +4,7 @@
 |------------|--------------------------------------------------------------------------|
 | Componente | `node_payload` (codificador/decodificador C) + *payload formatter* do TTN |
 | Escopo     | mensagens **uplink** do nó (nó → servidor). Downlinks ficam para o passo 6.6 |
-| Status     | **Rascunho para revisão** — nenhuma linha de código escrita ainda         |
+| Status     | **Aprovado** pelo usuário em 2026-11-19 (Q1–Q5 como propostas) e **implementado** (§6) |
 
 ---
 
@@ -149,26 +149,44 @@ Todos esses vetores (e outros de borda) ficam em **um arquivo só**,
 
 ---
 
-## 6. Implementação prevista
+## 6. Implementação
 
 | Peça | Onde | Notas |
 |------|------|-------|
-| Codificador + decodificador C | `node/Lib/node_payload/` (`node_payload.h/.c`) | sem HAL, sem `float`, sem `malloc`; `encode_*` retorna o tamanho ou 0 se o buffer não couber; `decode` devolve a mensagem tipada ou um erro |
-| Testes C | `tests/test_payload.c` | vetores do JSON + casos de borda (sentinelas, saturação, buffer pequeno, versão desconhecida) |
-| *Payload formatter* do TTN | `firmware/node_device/ttn/uplink_formatter.js` | função `decodeUplink(input)` no formato do TTN (`{data, warnings, errors}`), com nomes e unidades legíveis (ex.: `distance_m: 3.0`, `temperature_c: 22.5`) |
-| Testes JS | `firmware/node_device/ttn/uplink_formatter.test.js` | Node.js puro (`node --test`), sem dependências; mesmos vetores do JSON |
-| CI | job novo `ttn-formatter` no `ci.yml` | `node --test` (Node já vem no runner) |
-| Integração no firmware | `App/app_node.c` | o heartbeat passa a usar o codificador; `measurement` só quando houver sensor; `status` no boot e a cada 24 h |
+| Codificador + decodificador C | `node/Lib/node_payload/` (`node_payload.h/.c`) | sem HAL, sem `float`, sem `malloc`; `encode_*` retorna o tamanho ou 0 se o buffer não couber; `decode` devolve a mensagem tipada ou um erro (`EMPTY`, `UNKNOWN_TYPE`, `UNKNOWN_VERSION`, `BAD_LENGTH`). O codificador zera os bits reservados de `flags`; o decodificador os mantém crus |
+| Política de mensagens | `node/App/app_payload.c/h` (sem HAL) | escolhe a mensagem de cada envio: `status` no primeiro envio após o boot e depois de 24 h de *uptime* desde o último `status` (contadas a partir do envio, para não gerar rajada depois de um longo período sem rede); `heartbeat` nos demais. Mantém o *uptime* em 64 bits a partir do tick de 32 bits (que dá a volta em 49,7 dias) |
+| Testes C | `tests/test_payload.c`, `tests/test_app_payload.c` | vetores do JSON + casos de borda (sentinelas, saturação, buffer pequeno, versão desconhecida, volta do tick) |
+| Vetores | `tests/fixtures/payload_vectors.json` | lido direto pelo JS; para o C, o CMake gera `payload_vectors.h` no configure (`tests/cmake/payload_vectors.cmake`, com o parser JSON do próprio CMake, sem Python). Cada vetor válido tem `fields` (valores crus, para o C) e `ttn` (saída esperada do formatter) |
+| *Payload formatter* do TTN | `firmware/node_device/ttn/uplink_formatter.js` | `decodeUplink(input)` no formato do TTN (`{data, warnings, errors}`); ES5 puro para o motor JavaScript do TTN; desconhecido vira `null`; os erros começam com o código do vetor (`unknown_type: …`); `fPort` diferente de 1 é erro; `reset_cause` fora da faixa vira `"unknown"` com um *warning* |
+| Testes JS | `firmware/node_device/ttn/uplink_formatter.test.js` | Node.js puro (`node --test ttn/uplink_formatter.test.js`), sem dependências |
+| CI | job `ttn-formatter` no `ci.yml` | Node 22 |
+| Integração no firmware | `App/app_node.c` | `app_payload_build` é a função de payload do ciclo; `app_payload_tick` roda a cada volta do laço. `measurement` entra quando houver sensor (6.2) |
+
+Saída do formatter (`data`):
+
+| Tipo | Campos |
+|------|--------|
+| `heartbeat` | `type`, `version`, `counter` |
+| `measurement` | `type`, `version`, `distance_m`, `battery_v`, `temperature_c`, `flags` (`sensor_error`, `unstable`, `temp_uncompensated`, `battery_low`, `first_after_boot`), `samples` |
+| `status` | `type`, `version`, `firmware` (ex.: `"0.1.0"`), `reset_cause` (`unknown`, `power_on`, `pin`, `software`, `iwdg`, `wwdg`, `low_power`, `other`), `uptime_h`, `join_failures`, `uplink_failures`, `module_resets` |
+
+Limitações conhecidas:
+- O `status` conta como enviado quando o payload é montado. Se aquele uplink (não confirmado)
+  se perder, o próximo `status` só sai 24 h depois.
+- `reset_cause` vai como 0 (desconhecida) até o watchdog (6.5) ler os flags do `RCC_CSR`.
 
 O decodificador em C existe para os testes de ida e volta (codifica → decodifica → compara) e
 para uso futuro no gateway/backend.
 
+**Instalar no TTN:** *Application → Payload formatters → Uplink → Custom Javascript
+formatter*, colando o conteúdo inteiro de `ttn/uplink_formatter.js`.
+
 ---
 
-## 7. Questões para aprovação
+## 7. Questões (aprovadas em 2026-11-19, todas como propostas)
 
-| #  | Questão | Proposta |
-|----|---------|----------|
+| #  | Questão | Decisão |
+|----|---------|---------|
 | Q1 | O nó envia a **distância** sensor→água (servidor calcula o nível com a altura de instalação) ou já calcula o **nível**? | **distância**: recalibrar não exige mexer no nó; o nível pode ser calculado no formatter do TTN quando a altura for conhecida |
 | Q2 | Frequência do `status` | no primeiro envio após cada boot e a cada **24 h** |
 | Q3 | Enviar bateria e temperatura como "desconhecido" desde já, mesmo sem hardware para medir? | **sim**: o formato fica estável; quando o hardware existir, só os valores mudam |

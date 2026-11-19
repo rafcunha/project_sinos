@@ -904,7 +904,9 @@ O período conta do início de um envio ao início do próximo.
 
 - **Payload:** enquanto o driver do sensor ultrassônico não existe, o nó envia um
   *heartbeat* de 3 bytes, `[0x00][contador MSB][contador LSB]`. Ele prova o enlace de ponta
-  a ponta sem inventar uma leitura de nível. O tipo `0x00` fica reservado para heartbeat.
+  a ponta sem inventar uma leitura de nível. O formato de todos os uplinks (heartbeat,
+  `status` no boot e a cada 24 h, e a futura `measurement`) está em
+  [`docs/payload/payload_spec.md`](../payload/payload_spec.md).
 
 ### 18.3 Baixo consumo do MCU (Stop 2 com RTC)
 

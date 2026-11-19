@@ -27,11 +27,15 @@ ultrassônico. Hardware do nó:
   host e validado na placa até o join (sem rede).
 - Ciclo da aplicação (`node/App/`): setup → join → envio periódico → sleep do módulo →
   Stop 2 do MCU, com retentativas e reset automático do módulo.
-- 157 testes no host (Unity), todos passando; teste de mutação no driver (24 defeitos
-  injetados, todos detectados).
-- Firmware Debug e Release compilam sem warnings (Release: ~28,7 KB flash, ~4,3 KB RAM).
+- Formato do payload (`docs/payload/payload_spec.md`, aprovado): codec C
+  (`node/Lib/node_payload/`), política de mensagens (`App/app_payload.c`: `status` no boot e a
+  cada 24 h, `heartbeat` nos demais envios) e *payload formatter* do TTN (`ttn/`), todos
+  testados contra os mesmos vetores (`tests/fixtures/payload_vectors.json`).
+- 173 testes no host (Unity) + 28 do formatter (`node --test`), todos passando; teste de
+  mutação no driver (24 defeitos) e no payload (15), todos detectados.
+- Firmware Debug e Release compilam sem warnings (Release: ~29,4 KB flash, ~4,3 KB RAM).
 - Debug pelo VS Code (extensão STM32Cube) configurado; trace da UART em builds Debug.
-- CI no GitHub Actions verde (testes + build Debug/Release); Release com `.bin` em tags
+- CI no GitHub Actions verde (testes + formatter + build Debug/Release); Release com `.bin` em tags
   `v*` escrito, aguardando a primeira release (6.7.1).
 
 **O que NÃO foi verificado na placa** (depende de um join com sucesso): envio de
@@ -48,11 +52,14 @@ project_sinos/
 ├── firmware/node_device/
 │   ├── docs/wioe5/driver_spec.md      especificação do driver + integração (§1–§18)
 │   ├── docs/wioe5/test_plan.md        plano de testes, situação dos testes
+│   ├── docs/payload/payload_spec.md   formato dos uplinks (bytes, tipos, vetores)
 │   ├── node/                          projeto CubeMX (abrir esta pasta no VS Code)
 │   │   ├── node.ioc                   configuração CubeMX (alterar só pelo CubeMX)
 │   │   ├── Core/Src/main.c            só chama app_node_init/app_node_process (USER CODE)
 │   │   ├── App/app_lorawan.c/h        ciclo e política de retentativa (sem HAL, testado)
-│   │   ├── App/app_node.c/h           cola STM32: instâncias, callbacks HAL, payload, Stop 2
+│   │   ├── App/app_payload.c/h        escolhe a mensagem de cada envio (sem HAL, testado)
+│   │   ├── App/app_node.c/h           cola STM32: instâncias, callbacks HAL, Stop 2
+│   │   ├── Lib/node_payload           codec do payload (sem HAL)
 │   │   ├── Lib/wioe5/inc|src          driver (sem HAL)
 │   │   ├── Lib/wioe5/port             porta STM32 (único arquivo do driver com HAL)
 │   │   ├── .vscode/                   launch.json (debug ST-LINK), settings.json e
@@ -60,8 +67,10 @@ project_sinos/
 │   │   ├── .settings/                 versões travadas das ferramentas da extensão ST
 │   │   │                              (bundles-lock): todos compilam com as mesmas versões
 │   │   └── .clangd                    aponta o autocompletar para build/Debug
-│   └── tests/                         testes no host (Unity, fake port, modem simulado)
-│       └── fixtures/                  capturas reais de bancada
+│   ├── tests/                         testes no host (Unity, fake port, modem simulado)
+│   │   ├── fixtures/                  capturas reais de bancada + payload_vectors.json
+│   │   └── cmake/                     gera payload_vectors.h a partir do JSON
+│   └── ttn/                           payload formatter do TTN (colar no console) + testes
 └── firmware/gateway/                  vazio
 ```
 
@@ -128,6 +137,9 @@ Debug na placa pela linha de comando: ver AGENTS.md §4.1. Resumo:
    precisa ser atualizada, senão nenhum PR consegue ser mergeado.
 10. Arquivos gerados pelo CubeMX são CRLF (`.gitattributes` mantém `*.ioc` CRLF); os nossos
    são LF no repo. Avisos "LF will be replaced by CRLF" são normais.
+11. **`subprocess` do Python com `shell=True` no Windows usa o `cmd.exe`**, não o bash:
+   `>/dev/null` falha e todo comando "dá erro". Em scripts de mutação, chame
+   `subprocess.run([...], cwd=...)` sem shell, senão toda mutação parece "detectada".
 
 ---
 
@@ -144,6 +156,9 @@ Debug na placa pela linha de comando: ver AGENTS.md §4.1. Resumo:
 - MCU segura o Wio-E5 em reset desde o boot; o `setup` libera (PA0 open-drain).
 - Testes do host escritos antes da implementação; mudanças de contrato atualizam spec + testes juntos.
 - TTN avaliado e viável para testes, mas **adiado** pelo usuário (spec §16).
+- Payload (aprovado em 2026-11-19): todos os uplinks na `fport 1`, cabeçalho `[versão:3][tipo:5]`,
+  big-endian, sentinelas de "desconhecido"; o nó envia a **distância** (o nível é calculado
+  no servidor); `status` no boot e a cada 24 h; `heartbeat` só enquanto não há sensor.
 
 ---
 
@@ -197,20 +212,19 @@ host → implementação. A spec deve decidir:
 - [ ] Conversão distância → nível: `nível = altura_instalação − distância`, com calibração.
 - [ ] Energia: alimentar o sensor só durante a medida (GPIO / load switch).
 - [ ] Mesma arquitetura do driver Wio-E5: lógica sem HAL + porta STM32 + testes com dublês.
-- [ ] Integrar trocando a função de payload em `App/app_node.c` (`heartbeat_payload` →
-      payload de nível; ver 6.3).
+- [ ] Integrar em `App/app_payload.c`: trocar o `heartbeat` por `measurement`
+      (`node_payload_encode_measurement`, payload spec §4.2), preenchendo `flags` e `samples`.
 
-### 6.3 Formato do payload e decodificador  ⟵ EM ANDAMENTO (2026-11-19)
-Branch `feature/payload-format`. Especificação escrita e **aguardando aprovação do usuário**:
-[`firmware/node_device/docs/payload/payload_spec.md`](firmware/node_device/docs/payload/payload_spec.md)
-(questões Q1–Q5 no fim do documento).
-- [x] Definir formato versionado ≤ 11 bytes: cabeçalho `[versão:3][tipo:5]`, tipos `heartbeat` (0,
-      3 B, compatível com o atual), `measurement` (1, 9 B), `status` (2, 10 B), big-endian, sentinelas
-      para "desconhecido", tudo na `fport = 1`.
-- [ ] Depois da aprovação: vetores de teste em `tests/fixtures/payload_vectors.json` (compartilhados
-      entre C e JS), codificador/decodificador C em `node/Lib/node_payload/`, `tests/test_payload.c`,
-      formatter do TTN em `firmware/node_device/ttn/uplink_formatter.js` com testes `node --test`,
-      job `ttn-formatter` no CI, heartbeat do `app_node.c` usando o codificador.
+### 6.3 Formato do payload e decodificador  ⟵ FEITO (2026-11-19)
+Especificação aprovada (Q1–Q5 como propostas):
+[`firmware/node_device/docs/payload/payload_spec.md`](firmware/node_device/docs/payload/payload_spec.md).
+- [x] Formato versionado ≤ 11 bytes: `heartbeat` (0, 3 B), `measurement` (1, 9 B), `status` (2, 10 B).
+- [x] Vetores compartilhados C/JS, codec C, política `app_payload`, formatter do TTN, job
+      `ttn-formatter` no CI, firmware usando o codec (spec §6).
+- [ ] Quando houver gateway (6.1): colar `ttn/uplink_formatter.js` no console do TTN e conferir
+      um `status` e um `heartbeat` reais decodificados.
+- [ ] `reset_cause` real (flags do `RCC_CSR`) junto com o watchdog (6.5).
+- [ ] Opcional (usuário): acrescentar o check `ttn-formatter` à ruleset da `main` (AGENTS.md §2.7).
 
 ### 6.4 Energia e autonomia
 - [ ] Medição de corrente por fase (Stop 2, medida, TX/RX). **Hoje não é possível**: o usuário
@@ -313,7 +327,7 @@ o `.bin` versionado. Se o usuário quiser FOTA, abrir item próprio.
 
 1. `git switch develop && git pull --ff-only` (rede só com autorização do usuário).
 2. Crie `feature/<escopo>-<descrição>` a partir de `develop` (AGENTS.md §2).
-3. Rode os testes do host antes de mexer, para ter a linha de base (157 passando).
+3. Rode os testes do host antes de mexer, para ter a linha de base (173 passando no host; 28 no `node --test ttn/uplink_formatter.test.js`).
 4. Ao terminar: checklist do AGENTS.md §2.4, merge `--no-ff` em `develop`.
    **Push só com autorização explícita do usuário na conversa.**
 5. Atualize este HANDOFF.md quando um passo for concluído ou uma decisão mudar.
