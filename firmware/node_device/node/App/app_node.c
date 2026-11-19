@@ -27,6 +27,19 @@
 extern RTC_HandleTypeDef hrtc;
 void                     SystemClock_Config(void);
 
+/* ---- Firmware identification ------------------------------------------------ */
+
+#ifndef FW_VERSION
+#define FW_VERSION "0.0.0-dev"
+#endif
+#ifndef FW_GIT_SHA
+#define FW_GIT_SHA "unknown"
+#endif
+
+/** Kept in the image (linker --undefined) so the version can be read from the
+ *  .bin (`strings node.bin | grep project_sinos`) or with the debugger. */
+const char g_fw_ident[] = "project_sinos node " FW_VERSION "+" FW_GIT_SHA;
+
 /* ---- Instances ----------------------------------------------------------- */
 
 static wioe5_t       s_wio;

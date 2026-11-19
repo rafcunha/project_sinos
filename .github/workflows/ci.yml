@@ -1,0 +1,127 @@
+# CI: host unit tests + firmware build for every push / pull request.
+# Also reused by release.yml (workflow_call) to build the release images.
+name: CI
+
+on:
+  push:
+    branches: [develop, 'feature/**', 'release/**', 'hotfix/**']
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      fw-version:
+        description: Version string embedded in the firmware (e.g. v0.1.0)
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  # github.workflow is the caller's name when reused, so CI and Release never cancel each other.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Same compiler major/minor as the STM32Cube bundle locked in node/.settings/bundles-lock.store.json.
+  ARM_TOOLCHAIN_VERSION: 14.3.rel1
+  ARM_TOOLCHAIN_SHA256: 8f6903f8ceb084d9227b9ef991490413014d991874a1e34074443c2a72b14dbd
+
+jobs:
+  host-tests:
+    name: host-tests (${{ matrix.preset }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [host, host-sanitize]
+    defaults:
+      run:
+        working-directory: firmware/node_device/tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build
+          gcc --version | head -1
+          cmake --version | head -1
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --output-junit junit.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ matrix.preset }}
+          path: firmware/node_device/tests/build/${{ matrix.preset }}/junit.xml
+          if-no-files-found: warn
+
+  firmware-build:
+    name: firmware-build (${{ matrix.config }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+    defaults:
+      run:
+        working-directory: firmware/node_device/node
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Arm GNU toolchain
+        id: toolchain-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/arm-gnu-toolchain
+          key: arm-gnu-toolchain-${{ env.ARM_TOOLCHAIN_VERSION }}-x86_64-${{ env.ARM_TOOLCHAIN_SHA256 }}
+
+      - name: Download Arm GNU toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          name="arm-gnu-toolchain-${ARM_TOOLCHAIN_VERSION}-x86_64-arm-none-eabi"
+          curl -fsSL -o toolchain.tar.xz \
+            "https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_TOOLCHAIN_VERSION}/binrel/${name}.tar.xz"
+          echo "${ARM_TOOLCHAIN_SHA256}  toolchain.tar.xz" | sha256sum -c -
+          mkdir -p ~/arm-gnu-toolchain
+          tar -xJf toolchain.tar.xz -C ~/arm-gnu-toolchain --strip-components=1
+
+      - name: Install build tools
+        run: |
+          echo "$HOME/arm-gnu-toolchain/bin" >> "$GITHUB_PATH"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build
+
+      - name: Configure
+        env:
+          FW_VERSION_INPUT: ${{ inputs.fw-version }}
+        run: |
+          arm-none-eabi-gcc --version | head -1
+          cmake --preset ${{ matrix.config }} -DNODE_WERROR=ON "-DFW_VERSION=${FW_VERSION_INPUT:-0.0.0-ci}"
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.config }}
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.config }}
+          path: |
+            firmware/node_device/node/build/${{ matrix.config }}/node.elf
+            firmware/node_device/node/build/${{ matrix.config }}/node.bin
+            firmware/node_device/node/build/${{ matrix.config }}/node.hex
+            firmware/node_device/node/build/${{ matrix.config }}/node.map
+          if-no-files-found: error
