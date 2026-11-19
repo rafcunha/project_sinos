@@ -51,7 +51,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Lib/wioe5/src/wioe5_parse.c
     Lib/wioe5/src/wioe5_ringbuf.c
     Lib/wioe5/port/wioe5_port_stm32.c
+    Lib/node_payload/node_payload.c
     App/app_lorawan.c
+    App/app_payload.c
     App/app_node.c
 )
 
@@ -60,6 +62,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     Lib/wioe5/inc
     Lib/wioe5/port
+    Lib/node_payload
     App
 )
 
